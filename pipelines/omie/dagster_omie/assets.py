@@ -2,7 +2,7 @@ import requests
 import locale
 from datetime import date, datetime
 from dagster import asset, AssetExecutionContext
-from eupower_core.omie import download_from_omie_fs
+from eupower_core.scrapes.omie import download_from_omie_fs
 from eupower_core.utils.sql import prepare_query_from_string
 from eupower_core.dagster_resources import FilesystemResource, DuckDBtoMySqlResource
 from eupower_core.dagster_resources.fs import FsReader
