@@ -4,9 +4,9 @@ from datetime import date, datetime
 from dagster import asset, AssetExecutionContext
 from eupower_core.omie import download_from_omie_fs
 from eupower_core.utils.sql import prepare_query_from_string
-from ..resources import FilesystemResource, DuckDBtoMySqlResource
-from ..resources.fs import FsReader
-from ..partitions import monthly_partition
+from eupower_core.dagster_resources import FilesystemResource, DuckDBtoMySqlResource
+from eupower_core.dagster_resources.fs import FsReader
+from .partitions import monthly_partition
 
 OMIE_LOAD_ASSETS = "omie_load_assets"
 MYSQL_SCHEMA = "omie"
@@ -31,7 +31,7 @@ def omie_raw_pdbc(context: AssetExecutionContext, fs: FilesystemResource) -> Non
 
 @asset(partitions_def=monthly_partition, group_name=OMIE_LOAD_ASSETS)
 def omie_raw_curva_pbc_uof(
-    context: AssetExecutionContext, fs: FilesystemResource
+        context: AssetExecutionContext, fs: FilesystemResource
 ) -> None:
     _download_omie_monthly_ep("curva_pbc_uof", context.partition_time_window.start, fs)
 
@@ -42,11 +42,10 @@ def omie_raw_curva_pbc_uof(
     group_name=OMIE_LOAD_ASSETS,
 )
 def omie_mysql_raw_curva_pbc_uof(
-    context: AssetExecutionContext,
-    fs: FilesystemResource,
-    duckdb_mysql: DuckDBtoMySqlResource,
+        context: AssetExecutionContext,
+        fs: FilesystemResource,
+        duckdb_mysql: DuckDBtoMySqlResource,
 ) -> None:
-
     # Make file pattern
     start_time = context.partition_time_window.start
     partition_id = start_time.strftime("%Y%m")
@@ -76,7 +75,7 @@ def omie_mysql_raw_curva_pbc_uof(
                 }
             )
         --END STATEMENT--
-        
+
         CREATE TABLE curva_pbc_uof_{{ partition_id | sqlsafe }} AS
             SELECT CAST({{ partition_id }} AS VARCHAR) as partition_month,
                    for_day,
@@ -104,27 +103,27 @@ def omie_mysql_raw_curva_pbc_uof(
             country VARCHAR,
             unit_code VARCHAR,
             offer_type VARCHAR,
-            volume float,
-            price float,
+            volume FLOAT,
+            price FLOAT,
             bid_offer VARCHAR
         )
         --END STATEMENT--
-        
+
         CALL mysql_execute('mysql_db', 'DROP TABLE IF EXISTS {{ mysql_schema | sqlsafe }}.curva_pbc_uof_{{ partition_id | sqlsafe }}')
         --END STATEMENT--
-        
+
         CREATE TABLE mysql_db.{{ mysql_schema | sqlsafe }}.curva_pbc_uof_{{ partition_id | sqlsafe }} 
         AS FROM memory.curva_pbc_uof_{{ partition_id | sqlsafe }}
         --END STATEMENT--
-        
+
         DELETE FROM mysql_db.{{ mysql_schema | sqlsafe }}.curva_pbc_uof
         WHERE partition_month = {{ partition_id }}
         --END STATEMENT--
-        
+
         INSERT INTO mysql_db.{{ mysql_schema | sqlsafe }}.curva_pbc_uof
         SELECT * FROM mysql_db.{{ mysql_schema | sqlsafe }}.curva_pbc_uof_{{ partition_id | sqlsafe }}
         --END STATEMENT--
-        
+
         CALL mysql_execute('mysql_db', 'DROP TABLE IF EXISTS {{ mysql_schema | sqlsafe }}.curva_pbc_uof_{{ partition_id | sqlsafe }}')
         --END STATEMENT--
         """
@@ -147,7 +146,7 @@ def omie_raw_pdbf(context: AssetExecutionContext, fs: FilesystemResource) -> Non
 
 
 def _download_omie_monthly_ep(
-    endpoint, start: datetime, fs: FilesystemResource
+        endpoint, start: datetime, fs: FilesystemResource
 ) -> None:
     as_of_date = date(start.year, start.month, 1)
     session = requests.Session()

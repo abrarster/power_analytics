@@ -1,7 +1,6 @@
-import os
 from dagster import Definitions, load_assets_from_modules, EnvVar
-from .assets import omie
-from .resources import FilesystemResource, DuckDBtoMySqlResource
+from eupower_core.dagster_resources import FilesystemResource, DuckDBtoMySqlResource
+from . import assets
 from .jobs import download_job
 
 # Resource setup
@@ -14,7 +13,7 @@ RESOURCES = {
     ),
 }
 
-omie_assets = load_assets_from_modules([omie])
+omie_assets = load_assets_from_modules([assets])
 all_jobs = [download_job]
 
 defs = Definitions(assets=omie_assets, resources=RESOURCES, jobs=all_jobs)
