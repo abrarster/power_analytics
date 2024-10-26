@@ -9,7 +9,9 @@ setup(
     long_description=readme,
     install_requires=[
         "pandas",
-        "requests"
+        "requests",
+        'jinja2==3.1.4',
+        'markupsafe==3.0.2'
     ],
     python_requires=">=3.12",
 )
