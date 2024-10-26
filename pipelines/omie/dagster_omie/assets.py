@@ -31,7 +31,7 @@ def omie_raw_pdbc(context: AssetExecutionContext, fs: FilesystemResource) -> Non
 
 @asset(partitions_def=monthly_partition, group_name=OMIE_LOAD_ASSETS)
 def omie_raw_curva_pbc_uof(
-        context: AssetExecutionContext, fs: FilesystemResource
+    context: AssetExecutionContext, fs: FilesystemResource
 ) -> None:
     _download_omie_monthly_ep("curva_pbc_uof", context.partition_time_window.start, fs)
 
@@ -42,9 +42,9 @@ def omie_raw_curva_pbc_uof(
     group_name=OMIE_LOAD_ASSETS,
 )
 def omie_mysql_raw_curva_pbc_uof(
-        context: AssetExecutionContext,
-        fs: FilesystemResource,
-        duckdb_mysql: DuckDBtoMySqlResource,
+    context: AssetExecutionContext,
+    fs: FilesystemResource,
+    duckdb_mysql: DuckDBtoMySqlResource,
 ) -> None:
     # Make file pattern
     start_time = context.partition_time_window.start
@@ -146,7 +146,7 @@ def omie_raw_pdbf(context: AssetExecutionContext, fs: FilesystemResource) -> Non
 
 
 def _download_omie_monthly_ep(
-        endpoint, start: datetime, fs: FilesystemResource
+    endpoint, start: datetime, fs: FilesystemResource
 ) -> None:
     as_of_date = date(start.year, start.month, 1)
     session = requests.Session()

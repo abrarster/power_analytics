@@ -5,10 +5,12 @@ import pandas as pd
 import json
 import io
 import os
+import tenacity
 from zipfile import ZipFile
 from datetime import date
 from typing import Optional
 from requests.exceptions import HTTPError
+from tempfile import TemporaryDirectory
 
 
 RTE_REGIONS = [
@@ -424,13 +426,17 @@ def _get_error_code(response: bytes) -> str:
     return json.loads(response.decode())["error"]
 
 
+@tenacity.retry(
+    stop=tenacity.stop_after_attempt(5),
+    wait=tenacity.wait_random(60, 180),
+    reraise=True,
+)
 def download_rte_generation_mix(
     target_date: date,
-    output_folder_path: str,
     region: Optional[str] = None,
     proxies: Optional[dict] = None,
     cert: Optional[str] = None,
-):
+) -> pd.DataFrame:
     url = f"https://eco2mix.rte-france.com/curves/eco2mixDl"
     params = {"date": target_date.strftime("%d/%m/%y")}
     if region is not None:
@@ -444,19 +450,20 @@ def download_rte_generation_mix(
         verify=False if cert is None else cert,
         proxies=proxies,
     )
-    save_path = os.path.join(
-        output_folder_path,
-        f'{target_date.strftime("%Y%m%d")}_{"FR" if region is None else region}.zip',
-    )
-    with open(save_path, "wb") as fd:
-        for chunk in r.iter_content(chunk_size=128):
-            fd.write(chunk)
+    with TemporaryDirectory() as temp_dir:
+        save_path = os.path.join(
+            temp_dir,
+            f'{target_date.strftime("%Y%m%d")}_{"FR" if region is None else region}.zip',
+        )
+        with open(save_path, "wb") as fd:
+            for chunk in r.iter_content(chunk_size=128):
+                fd.write(chunk)
 
-    with ZipFile(save_path, "r") as f_in:
-        parts = f_in.namelist()
-        string = io.StringIO()
-        string.write(f_in.read(parts[0]).decode("windows-1252"))
-        string.seek(0)
-        df = pd.read_csv(string, delimiter="\t", index_col=False, skipfooter=1)
+        with ZipFile(save_path, "r") as f_in:
+            parts = f_in.namelist()
+            string = io.StringIO()
+            string.write(f_in.read(parts[0]).decode("windows-1252"))
+            string.seek(0)
+            df = pd.read_csv(string, delimiter="\t", index_col=False, skipfooter=1)
     df = df[~pd.isna(df["Date"])]
     return df
