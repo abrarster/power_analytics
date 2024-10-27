@@ -3,7 +3,7 @@ from __future__ import annotations
 import duckdb
 import logging
 from dagster import ConfigurableResource
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Generator
 from contextlib import contextmanager
 from dagster._utils.backoff import backoff
 from pydantic import Field
@@ -48,7 +48,7 @@ class DuckDBtoMySqlResource(ConfigurableResource):
     )
 
     @contextmanager
-    def get_db_connection(self, mysql_schema: str) -> DuckDbMySqlConnection:
+    def get_db_connection(self, mysql_schema: str) -> Generator[DuckDbMySqlConnection, None, None]:
         conn = backoff(
             fn=DuckDbMySqlConnection,
             retry_on=(RuntimeError, duckdb.IOException),
