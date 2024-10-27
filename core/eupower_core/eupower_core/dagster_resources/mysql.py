@@ -7,8 +7,22 @@ from typing import Any, Dict, Optional
 from contextlib import contextmanager
 from dagster._utils.backoff import backoff
 from pydantic import Field
+from eupower_core.utils.databases import MySqlDb
+
 
 logger = logging.getLogger(__name__)
+
+
+class MySqlResource(ConfigurableResource):
+    mysql_host: str = Field(default="localhost")
+    mysql_port: int = Field(default=3306)
+    mysql_user: str = Field(default="root")
+    mysql_password: str = Field(default="")
+
+    def get_db_connection(self) -> MySqlDb:
+        return MySqlDb(
+            self.mysql_user, self.mysql_password, self.mysql_host, self.mysql_port
+        )
 
 
 class DuckDBtoMySqlResource(ConfigurableResource):

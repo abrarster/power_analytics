@@ -162,3 +162,14 @@ cython_debug/
 #.idea/
 /power_orchestration/dagster.yaml
 /pipelines/dagster.yaml
+scratch/
+.idea/misc.xml
+.idea/modules.xml
+.idea/power_analytics.iml
+.idea/vcs.xml
+.idea/codeStyles/codeStyleConfig.xml
+.idea/inspectionProfiles/profiles_settings.xml
+.idea/inspectionProfiles/Project_Default.xml
+core/eupower_core/eupower_core/.DS_Store
+.DS_Store
+.idea/.gitignore

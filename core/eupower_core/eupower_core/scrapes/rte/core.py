@@ -69,7 +69,7 @@ def query_generation_byunit(
     end_date: date,
     proxies: Optional[dict] = None,
     cert: Optional[str] = None,
-):
+) -> pd.DataFrame:
     url = "https://digital.iservices.rte-france.com/open_api/actual_generation/v1/actual_generations_per_unit"
     response = _query_generation_endpoint(
         token_type, access_token, url, start_date, end_date, proxies, cert
