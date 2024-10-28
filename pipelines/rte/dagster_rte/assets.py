@@ -1,19 +1,22 @@
 import pandas as pd
 import logging
 import warnings
+import urllib3
 from datetime import date, timedelta
 from dagster import (
     asset,
-    DailyPartitionsDefinition,
     AssetExecutionContext,
     EnvVar,
     Config,
+    ExperimentalWarning,
 )
 from pydantic import Field
 from eupower_core.dagster_resources import FilesystemResource, MySqlResource
 from eupower_core.scrapes import rte
 
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 warnings.simplefilter(action="ignore", category=FutureWarning)
+warnings.simplefilter(action="ignore", category=ExperimentalWarning)
 logger = logging.getLogger(__name__)
 MYSQL_SCHEMA = "rte"
 ASSETS_GROUP = "rte"
@@ -29,16 +32,23 @@ class RteObservationConfig(Config):
 
 
 @asset(
-    partitions_def=DailyPartitionsDefinition("2018-01-01"),
-    group_name="partitioned_rte",
+    group_name=ASSETS_GROUP,
     tags={"storage": "filesystem"},
 )
-def eco2mix_generation_raw(context: AssetExecutionContext, fs: FilesystemResource):
-    as_of_date = context.partition_time_window.start.date()
-    writer = fs.get_writer(f"rte/eco2mix/raw/{as_of_date.strftime('%Y-%m-%d')}")
-    for region in rte.RTE_REGIONS:
-        df = rte.download_rte_generation_mix(as_of_date, region)
-        writer.write_file(f"{region}.csv", df)
+def eco2mix_generation_raw(
+    context: AssetExecutionContext, fs: FilesystemResource, config: RteObservationConfig
+):
+    start_date = date.today() - timedelta(days=config.days_back)
+    end_date = date.today() + timedelta(days=config.days_forward)
+    dates = pd.date_range(
+        start_date, min(end_date, date.today() - timedelta(days=0)), freq="D"
+    )
+    dates = [x.date() for x in list(dates)]
+    for dt in dates:
+        writer = fs.get_writer(f"rte/eco2mix/raw/{dt.strftime('%Y-%m-%d')}")
+        for region in rte.RTE_REGIONS:
+            df = rte.download_rte_generation_mix(dt, region)
+            writer.write_file(f"{region}.csv", df)
 
 
 @asset(tags={"storage": "mysql"}, group_name=ASSETS_GROUP)
@@ -154,7 +164,7 @@ def rte_realtime_consumption(
                 start_date TIMESTAMP,
                 end_date TIMESTAMP,
                 value FLOAT,
-                PRIMARY KEY start_date
+                PRIMARY KEY (start_date)
             )
         """
         db.execute_statements(stmt_create_table)
@@ -166,7 +176,7 @@ def rte_realtime_consumption(
 
 
 @asset(tags={"storage": "mysql"}, group_name=ASSETS_GROUP)
-def rte_realtime_consumption(
+def rte_exchange_phys_flows(
     context: AssetExecutionContext, mysql: MySqlResource, config: RteObservationConfig
 ):
     rte_id = EnvVar("RTE_ID").get_value()

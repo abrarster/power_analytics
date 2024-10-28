@@ -1,13 +1,15 @@
 import requests
 import locale
+import warnings
 from datetime import date, datetime
-from dagster import asset, AssetExecutionContext
+from dagster import asset, AssetExecutionContext, ExperimentalWarning
 from eupower_core.scrapes.omie import download_from_omie_fs
 from eupower_core.utils.sql import prepare_query_from_string
 from eupower_core.dagster_resources import FilesystemResource, DuckDBtoMySqlResource
 from eupower_core.dagster_resources.fs import FsReader
 from .partitions import monthly_partition
 
+warnings.simplefilter(action="ignore", category=ExperimentalWarning)
 OMIE_LOAD_ASSETS = "omie_load_assets"
 MYSQL_SCHEMA = "omie"
 locale.setlocale(locale.LC_NUMERIC, "eu_ES")
