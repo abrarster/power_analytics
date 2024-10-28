@@ -1,7 +1,7 @@
 import pandas as pd
 import logging
 from datetime import date, timedelta
-from dagster import asset, DailyPartitionsDefinition, AssetExecutionContext, EnvVar
+from dagster import asset, DailyPartitionsDefinition, AssetExecutionContext, EnvVar, Config, Field
 from eupower_core.dagster_resources import FilesystemResource, MySqlResource
 from eupower_core.scrapes import rte
 
@@ -9,6 +9,18 @@ logger = logging.getLogger(__name__)
 MYSQL_SCHEMA = "rte"
 ASSETS_GROUP = "rte"
 
+rte_generation_config = {
+    'days_back': Field(
+        int,
+        default_value=5,
+        description="Number of days to look back from today"
+    ),
+    'days_forward': Field(
+        int,
+        default_value=0,
+        description="Number of days to look forward from today"
+    )
+}
 
 @asset(
     partitions_def=DailyPartitionsDefinition("2018-01-01"),
@@ -23,15 +35,17 @@ def eco2mix_generation_raw(context: AssetExecutionContext, fs: FilesystemResourc
         writer.write_file(f"{region}.csv", df)
 
 
-@asset(tags={"storage": "mysql"}, group_name=ASSETS_GROUP)
+@asset(tags={"storage": "mysql"}, group_name=ASSETS_GROUP, config_schema=rte_generation_config)
 def rte_generation_byunit(context: AssetExecutionContext, mysql: MySqlResource):
+    config = context.op_config
     rte_id = EnvVar("RTE_ID").get_value()
     rte_secret = EnvVar("RTE_SECRET").get_value()
-    start_date = date.today() - timedelta(days=5)
-    end_date = date.today()
-    token_type, access_token = rte.get_token(rte_id, rte_secret)
-    result = rte.query_generation_byunit(token_type, access_token, start_date, end_date)
+    start_date = date.today() - timedelta(days=config['days_back'])
+    end_date = date.today() + timedelta(days=config['days_forward'])
+    dates = pd.date_range(start_date, min(end_date, date.today() - timedelta(days=0)), freq='D')
+    dates = [x.date() for x in list(dates)]
 
+    token_type, access_token = rte.get_token(rte_id, rte_secret)
     mysql_db = mysql.get_db_connection()
     stmt_create_table = """
         CREATE TABLE IF NOT EXISTS rte.rte_query_generation_byunit (
@@ -47,7 +61,9 @@ def rte_generation_byunit(context: AssetExecutionContext, mysql: MySqlResource):
     """
     with mysql_db as db:
         db.execute_statements(stmt_create_table)
-        db.write_dataframe(result, MYSQL_SCHEMA, "rte_query_generation_byunit")
+        for dt in dates:
+            df = rte.query_generation_byunit(token_type, access_token, dt, dt)
+            db.write_dataframe(df, MYSQL_SCHEMA, "rte_query_generation_byunit")
 
 
 @asset(tags={"storage": "mysql"}, group_name=ASSETS_GROUP)
