@@ -6,6 +6,7 @@ from eupower_core.dagster_resources import (
     MySqlResource,
 )
 from . import assets
+from .jobs import download_job
 
 warnings.filterwarnings("ignore", category=ExperimentalWarning)
 
@@ -21,4 +22,4 @@ RESOURCES = {
 }
 
 rte_assets = load_assets_from_modules([assets])
-defs = Definitions(assets=rte_assets, resources=RESOURCES)
+defs = Definitions(assets=rte_assets, resources=RESOURCES, jobs=[download_job])

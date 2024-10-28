@@ -1,14 +1,20 @@
 import pandas as pd
+import logging
 from datetime import date, timedelta
 from dagster import asset, DailyPartitionsDefinition, AssetExecutionContext, EnvVar
 from eupower_core.dagster_resources import FilesystemResource, MySqlResource
 from eupower_core.scrapes import rte
 
+logger = logging.getLogger(__name__)
 MYSQL_SCHEMA = "rte"
 ASSETS_GROUP = "rte"
 
 
-@asset(partitions_def=DailyPartitionsDefinition("2018-01-01"), group_name=ASSETS_GROUP)
+@asset(
+    partitions_def=DailyPartitionsDefinition("2018-01-01"),
+    group_name="partitioned_rte",
+    tags={"storage": "filesystem"},
+)
 def eco2mix_generation_raw(context: AssetExecutionContext, fs: FilesystemResource):
     as_of_date = context.partition_time_window.start.date()
     writer = fs.get_writer(f"rte/eco2mix/raw/{as_of_date.strftime('%Y-%m-%d')}")
@@ -49,7 +55,7 @@ def rte_generation_byfuel_15min(context: AssetExecutionContext, mysql: MySqlReso
     rte_id = EnvVar("RTE_ID").get_value()
     rte_secret = EnvVar("RTE_SECRET").get_value()
     start_date = date.today() - timedelta(days=5)
-    end_date = date.today()
+    end_date = date.today() - timedelta(days=1)
     date_range = pd.date_range(start=start_date, end=end_date, freq="D")
 
     mysql_db = mysql.get_db_connection()
@@ -67,8 +73,12 @@ def rte_generation_byfuel_15min(context: AssetExecutionContext, mysql: MySqlReso
 
         token_type, access_token = rte.get_token(rte_id, rte_secret)
         for dt in date_range:
-            df = rte.query_generation_mix_15min(token_type, access_token, dt)
-            db.write_dataframe(df, MYSQL_SCHEMA, "generation_by_fuel_15min")
+            try:
+                df = rte.query_generation_mix_15min(token_type, access_token, dt)
+                db.write_dataframe(df, MYSQL_SCHEMA, "generation_by_fuel_15min")
+            except TypeError:
+                logger.warning(f"No data for {dt}")
+                continue
 
 
 @asset(tags={"storage": "mysql"}, group_name=ASSETS_GROUP)
@@ -139,12 +149,16 @@ def rte_realtime_consumption(context: AssetExecutionContext, mysql: MySqlResourc
                 for_date TIMESTAMP,
                 imports FLOAT,
                 exports FLOAT,
-                net_imports FLOAT
+                net_imports FLOAT,
                 CONSTRAINT pk_entry PRIMARY KEY (counterparty, for_date)
             )
         """
         db.execute_statements(stmt_create_table)
         token_type, access_token = rte.get_token(rte_id, rte_secret)
         for country in countries:
-            df = rte.query_physical_flows(token_type, access_token, start_date, end_date, country)
+            if country == "GB":
+                continue
+            df = rte.query_physical_flows(
+                token_type, access_token, start_date, end_date, country
+            )
             db.write_dataframe(df, MYSQL_SCHEMA, "exchange_phys_flows")
