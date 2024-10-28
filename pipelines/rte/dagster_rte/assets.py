@@ -1,26 +1,32 @@
 import pandas as pd
 import logging
+import warnings
 from datetime import date, timedelta
-from dagster import asset, DailyPartitionsDefinition, AssetExecutionContext, EnvVar, Config, Field
+from dagster import (
+    asset,
+    DailyPartitionsDefinition,
+    AssetExecutionContext,
+    EnvVar,
+    Config,
+)
+from pydantic import Field
 from eupower_core.dagster_resources import FilesystemResource, MySqlResource
 from eupower_core.scrapes import rte
 
+warnings.simplefilter(action="ignore", category=FutureWarning)
 logger = logging.getLogger(__name__)
 MYSQL_SCHEMA = "rte"
 ASSETS_GROUP = "rte"
 
-rte_generation_config = {
-    'days_back': Field(
-        int,
-        default_value=5,
-        description="Number of days to look back from today"
-    ),
-    'days_forward': Field(
-        int,
-        default_value=0,
-        description="Number of days to look forward from today"
+
+class RteObservationConfig(Config):
+    days_back: int = Field(
+        default_value=5, description="Number of days to look back from today"
     )
-}
+    days_forward: int = Field(
+        default_value=0, description="Number of days to look forward from today"
+    )
+
 
 @asset(
     partitions_def=DailyPartitionsDefinition("2018-01-01"),
@@ -35,14 +41,18 @@ def eco2mix_generation_raw(context: AssetExecutionContext, fs: FilesystemResourc
         writer.write_file(f"{region}.csv", df)
 
 
-@asset(tags={"storage": "mysql"}, group_name=ASSETS_GROUP, config_schema=rte_generation_config)
-def rte_generation_byunit(context: AssetExecutionContext, mysql: MySqlResource):
-    config = context.op_config
+@asset(tags={"storage": "mysql"}, group_name=ASSETS_GROUP)
+def rte_generation_byunit(
+    context: AssetExecutionContext, mysql: MySqlResource, config: RteObservationConfig
+):
+
     rte_id = EnvVar("RTE_ID").get_value()
     rte_secret = EnvVar("RTE_SECRET").get_value()
-    start_date = date.today() - timedelta(days=config['days_back'])
-    end_date = date.today() + timedelta(days=config['days_forward'])
-    dates = pd.date_range(start_date, min(end_date, date.today() - timedelta(days=0)), freq='D')
+    start_date = date.today() - timedelta(days=config.days_back)
+    end_date = date.today() + timedelta(days=config.days_forward)
+    dates = pd.date_range(
+        start_date, min(end_date, date.today() - timedelta(days=0)), freq="D"
+    )
     dates = [x.date() for x in list(dates)]
 
     token_type, access_token = rte.get_token(rte_id, rte_secret)
@@ -67,11 +77,13 @@ def rte_generation_byunit(context: AssetExecutionContext, mysql: MySqlResource):
 
 
 @asset(tags={"storage": "mysql"}, group_name=ASSETS_GROUP)
-def rte_generation_byfuel_15min(context: AssetExecutionContext, mysql: MySqlResource):
+def rte_generation_byfuel_15min(
+    context: AssetExecutionContext, mysql: MySqlResource, config: RteObservationConfig
+):
     rte_id = EnvVar("RTE_ID").get_value()
     rte_secret = EnvVar("RTE_SECRET").get_value()
-    start_date = date.today() - timedelta(days=5)
-    end_date = date.today() - timedelta(days=1)
+    start_date = date.today() - timedelta(days=config.days_back)
+    end_date = date.today() + timedelta(days=config.days_forward)
     date_range = pd.date_range(start=start_date, end=end_date, freq="D")
 
     mysql_db = mysql.get_db_connection()
@@ -98,11 +110,13 @@ def rte_generation_byfuel_15min(context: AssetExecutionContext, mysql: MySqlReso
 
 
 @asset(tags={"storage": "mysql"}, group_name=ASSETS_GROUP)
-def rte_generation_byfuel(context: AssetExecutionContext, mysql: MySqlResource):
+def rte_generation_byfuel(
+    context: AssetExecutionContext, mysql: MySqlResource, config: RteObservationConfig
+):
     rte_id = EnvVar("RTE_ID").get_value()
     rte_secret = EnvVar("RTE_SECRET").get_value()
-    start_date = date.today() - timedelta(days=5)
-    end_date = date.today()
+    start_date = date.today() - timedelta(days=config.days_back)
+    end_date = date.today() + timedelta(days=config.days_forward)
 
     mysql_db = mysql.get_db_connection()
     with mysql_db as db:
@@ -123,11 +137,13 @@ def rte_generation_byfuel(context: AssetExecutionContext, mysql: MySqlResource):
 
 
 @asset(tags={"storage": "mysql"}, group_name=ASSETS_GROUP)
-def rte_realtime_consumption(context: AssetExecutionContext, mysql: MySqlResource):
+def rte_realtime_consumption(
+    context: AssetExecutionContext, mysql: MySqlResource, config: RteObservationConfig
+):
     rte_id = EnvVar("RTE_ID").get_value()
     rte_secret = EnvVar("RTE_SECRET").get_value()
-    start_date = date.today() - timedelta(days=5)
-    end_date = date.today()
+    start_date = date.today() - timedelta(days=config.days_back)
+    end_date = date.today() + timedelta(days=config.days_forward)
 
     mysql_db = mysql.get_db_connection()
     with mysql_db as db:
@@ -150,11 +166,13 @@ def rte_realtime_consumption(context: AssetExecutionContext, mysql: MySqlResourc
 
 
 @asset(tags={"storage": "mysql"}, group_name=ASSETS_GROUP)
-def rte_realtime_consumption(context: AssetExecutionContext, mysql: MySqlResource):
+def rte_realtime_consumption(
+    context: AssetExecutionContext, mysql: MySqlResource, config: RteObservationConfig
+):
     rte_id = EnvVar("RTE_ID").get_value()
     rte_secret = EnvVar("RTE_SECRET").get_value()
-    start_date = date.today() - timedelta(days=5)
-    end_date = date.today()
+    start_date = date.today() - timedelta(days=config.days_back)
+    end_date = date.today() + timedelta(days=config.days_forward)
 
     countries = list(rte.EXCHANGE_COUNTERPARTIES.keys())
     mysql_db = mysql.get_db_connection()
