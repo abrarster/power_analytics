@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import random
+import string
 import pandas as pd
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
@@ -39,16 +41,17 @@ class MySqlDb:
 
     def execute_statements(self, query: str) -> None:
         statements = query.split("--END STATEMENT--")
+        trans = self.conn.begin()  # Start a transaction
         try:
             for statement in statements:
                 formatted_stmt = statement.replace("--END STATEMENT--", "").strip()
                 if len(formatted_stmt) < 3:
                     continue
                 self.conn.execute(text(formatted_stmt))
-            self.conn.commit()
+            trans.commit()  # Commit the entire transaction
 
         except Exception as e:
-            self.conn.rollback()  # Rollback on error
+            trans.rollback()  # Rollback on error
             raise e  # Re-raise the exception after rollback
 
     def query_to_dataframe(self, query: str) -> pd.DataFrame:
@@ -59,10 +62,29 @@ class MySqlDb:
     def write_dataframe(
         self, df: pd.DataFrame, database_name: str, table_name: str
     ) -> None:
+        temp_table_name = f"{table_name}_{generate_random_string()}"
+        stmt_create_temp_table = f"CREATE TABLE {database_name}.{temp_table_name} LIKE {database_name}.{table_name}"
+        self.execute_statements(stmt_create_temp_table)
         df.to_sql(
-            table_name,
+            temp_table_name,
             self.conn,
             schema=database_name,
-            if_exists="replace",
+            if_exists="append",
             index=False,
         )
+        stmt_replace = f"""
+            REPLACE INTO {database_name}.{table_name}
+            SELECT * FROM {database_name}.{temp_table_name}
+            --END STATEMENT--
+            """
+        stmt_drop_temp_table = f"""
+            DROP TABLE {database_name}.{temp_table_name}
+            --END STATEMENT--
+        """
+        self.execute_statements(stmt_replace)
+        self.execute_statements(stmt_drop_temp_table)
+
+
+def generate_random_string(length: int = 6) -> str:
+    characters = string.ascii_letters + string.digits
+    return "".join(random.choice(characters) for _ in range(length))

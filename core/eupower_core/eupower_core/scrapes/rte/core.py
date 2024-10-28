@@ -336,7 +336,7 @@ def query_physical_flows(
                 lambda y: "imports" if y == "France" else "exports"
             )
         )
-        .pivot("start_date", "direction", "mw")
+        .pivot(index="start_date", columns="direction", values="mw")
         .reset_index()
         .assign(net_imports=lambda x: x.imports - x.exports, counterparty=counterparty)[
             ["counterparty", "start_date", "imports", "exports", "net_imports"]

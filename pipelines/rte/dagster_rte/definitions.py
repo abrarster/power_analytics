@@ -1,10 +1,13 @@
-from dagster import Definitions, load_assets_from_modules, EnvVar
+import warnings
+from dagster import Definitions, load_assets_from_modules, EnvVar, ExperimentalWarning
 from eupower_core.dagster_resources import (
     FilesystemResource,
     DuckDBtoMySqlResource,
     MySqlResource,
 )
 from . import assets
+
+warnings.filterwarnings("ignore", category=ExperimentalWarning)
 
 FS_CONFIG = {"root_folder": EnvVar("FSRESOURCE_ROOT")}
 RESOURCES = {

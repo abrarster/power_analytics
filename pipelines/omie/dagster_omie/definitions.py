@@ -1,7 +1,10 @@
-from dagster import Definitions, load_assets_from_modules, EnvVar
+import warnings
+from dagster import Definitions, load_assets_from_modules, EnvVar, ExperimentalWarning
 from eupower_core.dagster_resources import FilesystemResource, DuckDBtoMySqlResource
 from . import assets
 from .jobs import download_job
+
+warnings.filterwarnings("ignore", category=ExperimentalWarning)
 
 # Resource setup
 
