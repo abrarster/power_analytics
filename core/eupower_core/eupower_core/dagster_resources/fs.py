@@ -15,7 +15,7 @@ class FilesystemResource(ConfigurableResource):
     def get_writer(self, relative_folder: str) -> FsWriter:
         return FsWriter(self.root_folder, relative_folder)
 
-    def get_reader(self, relative_folder: str) -> FsReader:
+    def get_reader(self, relative_folder: Optional[str] = None) -> FsReader:
         return FsReader(self.root_folder, relative_folder)
 
 

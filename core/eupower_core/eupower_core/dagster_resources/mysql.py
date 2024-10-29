@@ -87,7 +87,11 @@ class DuckDbMySqlConnection:
         config: Optional[Dict] = None,
     ):
         self.mysql_schema = mysql_schema
-        self.duckdb_conn = duckdb.connect(database, read_only, config)
+        self.duckdb_conn = duckdb.connect(
+            database or ":memory:", 
+            read_only, 
+            config or {}
+        )
 
     def validate_mysql_schema(self):
         stmt_information_schema = "SELECT * FROM mysql_query('mysql_db', 'SELECT SCHEMA_NAME FROM information_schema.SCHEMATA')"
