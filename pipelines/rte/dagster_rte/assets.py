@@ -51,6 +51,7 @@ def eco2mix_generation_raw(
         start_date, min(end_date, date.today() - timedelta(days=0)), freq="D"
     )
     dates = [x.date() for x in list(dates)]
+    fs.get_writer(f"rte/eco2mix/raw").delete_data()
     for dt in dates:
         writer = fs.get_writer(f"rte/eco2mix/raw/{dt.strftime('%Y-%m-%d')}")
         for region in [*rte.RTE_REGIONS, None]:

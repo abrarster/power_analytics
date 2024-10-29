@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import logging
 import pandas as pd
+import shutil
 from dagster import ConfigurableResource
 from typing import Optional
 
@@ -60,6 +61,9 @@ class FsWriter(FsBase):
             with open(full_path, mode) as file:
                 logger.info(f"Writing {full_path}")
                 file.write(content)
+                
+    def delete_data(self):
+        shutil.rmtree(self.base_path)
 
 
 class FsReader(FsBase):

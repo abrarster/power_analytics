@@ -63,6 +63,7 @@ rte_core_assets = AssetSelection.assets(
     assets.rte_generation_byfuel,
     assets.rte_exchange_phys_flows,
     assets.eco2mix_generation_raw,
+    assets.eco2mix_balances,
 )
 
 download_job = define_asset_job(

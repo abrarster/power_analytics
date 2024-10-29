@@ -6,12 +6,14 @@ import json
 import io
 import os
 import tenacity
+import logging
 from zipfile import ZipFile
 from datetime import date
 from typing import Optional
 from requests.exceptions import HTTPError
 from tempfile import TemporaryDirectory
 
+logger = logging.getLogger(__name__)
 
 RTE_REGIONS = [
     "ARA",
@@ -442,7 +444,9 @@ def download_rte_generation_mix(
     if region is not None:
         assert region in RTE_REGIONS
         params["region"] = region
-
+    logger.info(
+        f"Downloading eco2mix data for {target_date.strftime('%d/%m/%y')} and {region or 'FR'}"
+    )
     r = requests.get(
         url,
         params=params,
@@ -464,6 +468,8 @@ def download_rte_generation_mix(
             string = io.StringIO()
             string.write(f_in.read(parts[0]).decode("windows-1252"))
             string.seek(0)
-            df = pd.read_csv(string, delimiter="\t", index_col=False, skipfooter=1)
+            df = pd.read_csv(
+                string, delimiter="\t", index_col=False, skipfooter=1, engine="python"
+            )
     df = df[~pd.isna(df["Date"])]
     return df
