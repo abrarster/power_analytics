@@ -8,5 +8,6 @@ from .core import (
     query_physical_flows,
     query_generation_mix_15min,
     download_rte_generation_mix,
-    RTE_REGIONS
+    RTE_REGIONS,
+    EXCHANGE_COUNTERPARTIES
 )

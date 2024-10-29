@@ -3,12 +3,26 @@ from __future__ import annotations
 import duckdb
 import logging
 from dagster import ConfigurableResource
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Generator
 from contextlib import contextmanager
 from dagster._utils.backoff import backoff
 from pydantic import Field
+from eupower_core.utils.databases import MySqlDb
+
 
 logger = logging.getLogger(__name__)
+
+
+class MySqlResource(ConfigurableResource):
+    mysql_host: str = Field(default="localhost")
+    mysql_port: int = Field(default=3306)
+    mysql_user: str = Field(default="root")
+    mysql_password: str = Field(default="")
+
+    def get_db_connection(self) -> MySqlDb:
+        return MySqlDb(
+            self.mysql_user, self.mysql_password, self.mysql_host, self.mysql_port
+        )
 
 
 class DuckDBtoMySqlResource(ConfigurableResource):
@@ -34,7 +48,7 @@ class DuckDBtoMySqlResource(ConfigurableResource):
     )
 
     @contextmanager
-    def get_db_connection(self, mysql_schema: str) -> DuckDbMySqlConnection:
+    def get_db_connection(self, mysql_schema: str) -> Generator[DuckDbMySqlConnection, None, None]:
         conn = backoff(
             fn=DuckDbMySqlConnection,
             retry_on=(RuntimeError, duckdb.IOException),
@@ -73,7 +87,11 @@ class DuckDbMySqlConnection:
         config: Optional[Dict] = None,
     ):
         self.mysql_schema = mysql_schema
-        self.duckdb_conn = duckdb.connect(database, read_only, config)
+        self.duckdb_conn = duckdb.connect(
+            database or ":memory:", 
+            read_only, 
+            config or {}
+        )
 
     def validate_mysql_schema(self):
         stmt_information_schema = "SELECT * FROM mysql_query('mysql_db', 'SELECT SCHEMA_NAME FROM information_schema.SCHEMATA')"

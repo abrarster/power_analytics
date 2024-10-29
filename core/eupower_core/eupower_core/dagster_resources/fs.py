@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import logging
+import pandas as pd
+import shutil
 from dagster import ConfigurableResource
 from typing import Optional
 
@@ -14,7 +16,7 @@ class FilesystemResource(ConfigurableResource):
     def get_writer(self, relative_folder: str) -> FsWriter:
         return FsWriter(self.root_folder, relative_folder)
 
-    def get_reader(self, relative_folder: str) -> FsReader:
+    def get_reader(self, relative_folder: Optional[str] = None) -> FsReader:
         return FsReader(self.root_folder, relative_folder)
 
 
@@ -44,18 +46,24 @@ class FsWriter(FsBase):
     def __exit__(self, exc_type, exc_val, exc_tb):
         print(f"Exiting FsWriter at {self.base_path}")
 
-    def write_file(self, file_name: str, content: str | bytes) -> None:
+    def write_file(self, file_name: str, content: str | bytes | pd.DataFrame) -> None:
+        os.makedirs(self.base_path, exist_ok=True)
         full_path = f"{self.base_path}/{file_name}"
-        print(f"writing to {full_path}")
-        if isinstance(content, str):
-            mode = "w"
-        elif isinstance(content, bytes):
-            mode = "wb"
+        if isinstance(content, pd.DataFrame):
+            content.to_csv(full_path, index=False)
         else:
-            raise NotImplementedError
-        with open(full_path, mode) as file:
-            logger.info(f"Writing {full_path}")
-            file.write(content)
+            if isinstance(content, str):
+                mode = "w"
+            elif isinstance(content, bytes):
+                mode = "wb"
+            else:
+                raise NotImplementedError
+            with open(full_path, mode) as file:
+                logger.info(f"Writing {full_path}")
+                file.write(content)
+                
+    def delete_data(self):
+        shutil.rmtree(self.base_path)
 
 
 class FsReader(FsBase):

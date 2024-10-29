@@ -1,13 +1,15 @@
 import requests
 import locale
+import warnings
 from datetime import date, datetime
-from dagster import asset, AssetExecutionContext
+from dagster import asset, AssetExecutionContext, ExperimentalWarning
 from eupower_core.scrapes.omie import download_from_omie_fs
 from eupower_core.utils.sql import prepare_query_from_string
 from eupower_core.dagster_resources import FilesystemResource, DuckDBtoMySqlResource
 from eupower_core.dagster_resources.fs import FsReader
 from .partitions import monthly_partition
 
+warnings.simplefilter(action="ignore", category=ExperimentalWarning)
 OMIE_LOAD_ASSETS = "omie_load_assets"
 MYSQL_SCHEMA = "omie"
 locale.setlocale(locale.LC_NUMERIC, "eu_ES")
@@ -31,7 +33,7 @@ def omie_raw_pdbc(context: AssetExecutionContext, fs: FilesystemResource) -> Non
 
 @asset(partitions_def=monthly_partition, group_name=OMIE_LOAD_ASSETS)
 def omie_raw_curva_pbc_uof(
-        context: AssetExecutionContext, fs: FilesystemResource
+    context: AssetExecutionContext, fs: FilesystemResource
 ) -> None:
     _download_omie_monthly_ep("curva_pbc_uof", context.partition_time_window.start, fs)
 
@@ -42,9 +44,9 @@ def omie_raw_curva_pbc_uof(
     group_name=OMIE_LOAD_ASSETS,
 )
 def omie_mysql_raw_curva_pbc_uof(
-        context: AssetExecutionContext,
-        fs: FilesystemResource,
-        duckdb_mysql: DuckDBtoMySqlResource,
+    context: AssetExecutionContext,
+    fs: FilesystemResource,
+    duckdb_mysql: DuckDBtoMySqlResource,
 ) -> None:
     # Make file pattern
     start_time = context.partition_time_window.start
@@ -146,7 +148,7 @@ def omie_raw_pdbf(context: AssetExecutionContext, fs: FilesystemResource) -> Non
 
 
 def _download_omie_monthly_ep(
-        endpoint, start: datetime, fs: FilesystemResource
+    endpoint, start: datetime, fs: FilesystemResource
 ) -> None:
     as_of_date = date(start.year, start.month, 1)
     session = requests.Session()
