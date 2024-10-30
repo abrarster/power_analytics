@@ -6,8 +6,13 @@ import xml.etree.ElementTree as ET
 import tenacity
 from entsoe import EntsoeRawClient
 from entsoe.mappings import PSRTYPE_MAPPINGS, CountryCode, NEIGHBOURS
+from pathlib import Path
+from functools import wraps
+from typing import Callable
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+__all__ = ["EntsoeScraper", "FileWritingEntsoeScraper"]
 
 
 def chunk_dates(
@@ -39,7 +44,7 @@ class EntsoeScraper:
 
     def get_generation_by_fuel_type(
         self, country_code: str, fuel_type: str
-    ) -> dict[str, pd.DataFrame]:
+    ) -> dict[str, str]:
         results = {}
         for start_date, end_date in chunk_dates(
             self.abs_start_date, self.abs_end_date, days_in_chunk=5
@@ -57,7 +62,7 @@ class EntsoeScraper:
 
     def get_generation_by_unit(
         self, country_code: str, fuel_type: str
-    ) -> dict[str, pd.DataFrame]:
+    ) -> dict[str, str]:
         results = {}
         for start_date, end_date in chunk_dates(
             self.abs_start_date, self.abs_end_date, days_in_chunk=1
@@ -73,7 +78,7 @@ class EntsoeScraper:
             ] = response
         return results
 
-    def get_load(self, country_code: str) -> dict[str, pd.DataFrame]:
+    def get_load(self, country_code: str) -> dict[str, str]:
         results = {}
         for start_date, end_date in chunk_dates(
             self.abs_start_date, self.abs_end_date, days_in_chunk=5
@@ -88,7 +93,7 @@ class EntsoeScraper:
             ] = response
         return results
 
-    def query_crossborder_flows(self, country_code: str) -> dict[str, pd.DataFrame]:
+    def query_crossborder_flows(self, country_code: str) -> dict[str, str]:
         results = {}
         neighbours = NEIGHBOURS[country_code]
         for neighbour in neighbours:
@@ -105,3 +110,79 @@ class EntsoeScraper:
                     f"A88_{country_code}_{neighbour}_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}"
                 ] = response
         return results
+
+
+def writes_to_files(cls):
+    """Class decorator that adds file writing capability to EntsoeScraper methods"""
+    original_init = cls.__init__
+    original_doc = cls.__doc__ or ""
+
+    def new_init(
+        self, api_key: str, output_dir: str | Path | None = None, *args, **kwargs
+    ):
+        original_init(self, api_key, *args, **kwargs)
+        self.output_dir = Path(output_dir) if output_dir else None
+
+    def method_wrapper(method: Callable) -> Callable:
+        @wraps(method)
+        def wrapper(self, *args, **kwargs) -> dict[str, str]:
+            results = method(self, *args, **kwargs)
+
+            if self.output_dir is not None:
+                self.output_dir.mkdir(parents=True, exist_ok=True)
+                for filename, content in results.items():
+                    filepath = self.output_dir / f"{filename}.xml"
+                    with open(filepath, "w", encoding="utf-8") as f:
+                        f.write(content)
+
+            return results
+
+        return wrapper
+
+    # Replace the init
+    cls.__init__ = new_init
+
+    # Find and wrap all methods that return dict[str, str]
+    for attr_name, attr_value in cls.__dict__.items():
+        if (
+            isinstance(attr_value, Callable)
+            and attr_value.__annotations__.get("return") == dict[str, str]
+        ):
+            setattr(cls, attr_name, method_wrapper(attr_value))
+
+    # Update the docstring
+    cls.__doc__ = f"""{original_doc}
+
+    Enhanced with file writing capability.
+
+    Parameters
+    ----------
+    api_key : str
+        The ENTSO-E API key
+    output_dir : str | Path | None, optional
+        Directory where XML files will be saved. If None, no files will be written.
+
+    Examples
+    --------
+    >>> scraper = FileWritingEntsoeScraper(api_key="your_key", output_dir="path/to/output")
+    >>> scraper.set_dates(start, end)
+    >>> results = scraper.get_load("DE")  # Saves XML files and returns results dict
+    
+    >>> # Or without file writing
+    >>> scraper = FileWritingEntsoeScraper(api_key="your_key")
+    >>> results = scraper.get_load("DE")  # Only returns results dict
+    """
+
+    return cls
+
+
+@writes_to_files
+class FileWritingEntsoeScraper(EntsoeScraper):
+    """A subclass of EntsoeScraper that automatically writes XML responses to files.
+
+    This class extends EntsoeScraper by automatically saving all XML responses
+    to files in a specified directory. The filename is derived from the response
+    metadata and includes the country code, fuel type (where applicable), and date range.
+    """
+
+    pass
