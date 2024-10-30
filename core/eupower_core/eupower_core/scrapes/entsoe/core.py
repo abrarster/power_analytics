@@ -4,13 +4,16 @@ import pandas as pd
 import urllib3
 import xml.etree.ElementTree as ET
 import tenacity
+import logging
 from entsoe import EntsoeRawClient
-from entsoe.mappings import PSRTYPE_MAPPINGS, CountryCode, NEIGHBOURS
+from entsoe.exceptions import NoMatchingDataError
+from entsoe.mappings import PSRTYPE_MAPPINGS, NEIGHBOURS
 from pathlib import Path
 from functools import wraps
 from typing import Callable
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+logger = logging.getLogger(__name__)
 
 __all__ = ["EntsoeScraper", "FileWritingEntsoeScraper"]
 
@@ -70,7 +73,7 @@ class EntsoeScraper:
             response = self.client.query_generation_per_plant(
                 country_code=country_code,
                 start=start_date,
-                end=end_date + pd.Timedelta(days=1),
+                end=end_date,
                 psr_type=fuel_type,
             )
             results[
@@ -97,18 +100,26 @@ class EntsoeScraper:
         results = {}
         neighbours = NEIGHBOURS[country_code]
         for neighbour in neighbours:
+            if neighbour == 'DE_AT_LU':
+                continue
             for start_date, end_date in chunk_dates(
                 self.abs_start_date, self.abs_end_date, days_in_chunk=5
             ):
-                response = self.client.query_crossborder_flows(
-                    country_code_from=country_code,
-                    country_code_to=neighbour,
-                    start=start_date,
-                    end=end_date + pd.Timedelta(days=1),
-                )
-                results[
-                    f"A88_{country_code}_{neighbour}_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}"
-                ] = response
+                try:
+                    response = self.client.query_crossborder_flows(
+                        country_code_from=country_code,
+                        country_code_to=neighbour,
+                        start=start_date,
+                        end=end_date + pd.Timedelta(days=1),
+                    )
+                    results[
+                        f"A88_{country_code}_{neighbour}_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}"
+                    ] = response
+                except NoMatchingDataError:
+                    logger.warning(
+                        f"No matching data for {country_code} to {neighbour} from {start_date} to {end_date}"
+                    )
+                    continue
         return results
 
 
