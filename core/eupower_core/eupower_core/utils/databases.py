@@ -69,7 +69,7 @@ class MySqlDb:
             temp_table_name,
             self.conn,
             schema=database_name,
-            if_exists="append",
+            if_exists="replace",
             index=False,
         )
         stmt_replace = f"""
