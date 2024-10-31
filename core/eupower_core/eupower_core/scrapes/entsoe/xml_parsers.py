@@ -18,12 +18,25 @@ def parse_entsoe_generation(xml_string) -> pd.DataFrame:
     bidding_zones = []
     units = []
     psr_types = []
-    doc_types = []  # New list for document types
+    doc_types = []
+    flow_types = []  # New list to store whether it's generation or consumption
 
     # Extract time series data
     for time_series in root.findall(".//ns:TimeSeries", ns):
-        # Get attributes from TimeSeries
-        bidding_zone = time_series.find(".//ns:inBiddingZone_Domain.mRID", ns).text
+        # Check for bidding zone type
+        in_bidding = time_series.find(".//ns:inBiddingZone_Domain.mRID", ns)
+        out_bidding = time_series.find(".//ns:outBiddingZone_Domain.mRID", ns)
+
+        if in_bidding is not None:
+            bidding_zone = in_bidding.text
+            flow_type = "generation"
+        elif out_bidding is not None:
+            bidding_zone = out_bidding.text
+            flow_type = "consumption"
+        else:
+            bidding_zone = "Unknown"
+            flow_type = "unknown"
+
         unit = time_series.find(".//ns:quantity_Measure_Unit.name", ns).text
         psr_type = time_series.find(".//ns:MktPSRType/ns:psrType", ns).text
 
@@ -45,9 +58,10 @@ def parse_entsoe_generation(xml_string) -> pd.DataFrame:
                 bidding_zones.append(bidding_zone)
                 units.append(unit)
                 psr_types.append(psr_type)
-                doc_types.append(doc_type)  # Add doc_type to each row
+                doc_types.append(doc_type)
+                flow_types.append(flow_type)  # Add flow type to each row
 
-    # Create DataFrame with new columns
+    # Create DataFrame with new flow_type column
     df = pd.DataFrame(
         {
             "timestamp": timestamps,
@@ -55,7 +69,8 @@ def parse_entsoe_generation(xml_string) -> pd.DataFrame:
             "bidding_zone": bidding_zones,
             "unit": units,
             "psr_type": psr_types,
-            "doc_type": doc_types,  # Add new column
+            "doc_type": doc_types,
+            "flow_type": flow_types,
         }
     )
 
