@@ -16,7 +16,7 @@ from . import xml_parsers
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 logger = logging.getLogger(__name__)
 
-__all__ = ["EntsoeScraper", "FileWritingEntsoeScraper"]
+__all__ = ["EntsoeScraper", "FileWritingEntsoeScraper", "EntsoeFileParser"]
 
 
 def chunk_dates(
@@ -36,12 +36,12 @@ def chunk_dates(
 
 def retry_on_http_400(cls):
     """Class decorator that adds retry logic to EntsoeScraper methods for HTTP 400 errors"""
-    
+
     def should_retry_exception(exception):
         # Check if it's an HTTP 400 error
         return (
-            isinstance(exception, urllib3.exceptions.HTTPError) 
-            and getattr(exception, 'status', None) == 400
+            isinstance(exception, urllib3.exceptions.HTTPError)
+            and getattr(exception, "status", None) == 400
         )
 
     def method_wrapper(method: Callable) -> Callable:
@@ -52,18 +52,20 @@ def retry_on_http_400(cls):
             stop=tenacity.stop_after_attempt(10),
             before_sleep=lambda retry_state: logger.warning(
                 f"HTTP 400 error, retrying {method.__name__} in {retry_state.next_action.sleep} seconds..."
-            )
+            ),
         )
         def wrapper(self, *args, **kwargs):
             return method(self, *args, **kwargs)
+
         return wrapper
 
     # Find and wrap all methods that aren't special methods (don't start with __)
     for attr_name, attr_value in cls.__dict__.items():
-        if isinstance(attr_value, Callable) and not attr_name.startswith('__'):
+        if isinstance(attr_value, Callable) and not attr_name.startswith("__"):
             setattr(cls, attr_name, method_wrapper(attr_value))
 
     return cls
+
 
 @retry_on_http_400
 class EntsoeScraper:
@@ -176,6 +178,7 @@ def writes_to_files(cls):
                 self.output_dir.mkdir(parents=True, exist_ok=True)
                 for filename, content in results.items():
                     filepath = self.output_dir / f"{filename}.xml"
+                    print(f"Writing {filepath}")
                     with open(filepath, "w", encoding="utf-8") as f:
                         f.write(content)
 
@@ -187,10 +190,12 @@ def writes_to_files(cls):
     cls.__init__ = new_init
 
     # Find and wrap all methods that return dict[str, str]
-    for attr_name, attr_value in cls.__dict__.items():
+    for attr_name in dir(cls):
+        attr_value = getattr(cls, attr_name)
         if (
             isinstance(attr_value, Callable)
-            and attr_value.__annotations__.get("return") == dict[str, str]
+            and getattr(attr_value, "__annotations__", {}).get("return")
+            == "dict[str, str]"
         ):
             setattr(cls, attr_name, method_wrapper(attr_value))
 
