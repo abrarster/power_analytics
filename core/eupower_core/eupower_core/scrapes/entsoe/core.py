@@ -5,6 +5,7 @@ import urllib3
 import xml.etree.ElementTree as ET
 import tenacity
 import logging
+from requests.exceptions import ConnectionError
 from entsoe import EntsoeRawClient
 from entsoe.exceptions import NoMatchingDataError
 from entsoe.mappings import PSRTYPE_MAPPINGS, NEIGHBOURS
@@ -41,8 +42,8 @@ def retry_on_http_400(cls):
         # Check if it's an HTTP 400 error
         return (
             isinstance(exception, urllib3.exceptions.HTTPError)
-            and getattr(exception, "status", None) == 400
-        )
+            and getattr(exception, "status", None) == 429
+        ) or (isinstance(exception, ConnectionError))
 
     def method_wrapper(method: Callable) -> Callable:
         @wraps(method)

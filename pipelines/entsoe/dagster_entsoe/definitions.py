@@ -17,5 +17,12 @@ RESOURCES = {
 
 entsoe_assets = dagster.load_assets_from_modules([assets])
 defs = dagster.Definitions(
-    assets=entsoe_assets, resources=RESOURCES, jobs=[jobs.job_gen_by_fuel]
+    assets=entsoe_assets,
+    resources=RESOURCES,
+    jobs=[
+        jobs.job_gen_by_fuel,
+        jobs.job_gen_by_unit,
+        jobs.job_demand,
+        jobs.job_crossborder_flows,
+    ],
 )

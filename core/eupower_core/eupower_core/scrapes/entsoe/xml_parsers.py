@@ -144,7 +144,20 @@ def parse_entsoe_load(xml_string) -> pd.DataFrame:
     )
 
     # Sort by timestamp
-    df = df.sort_values("for_date").reset_index(drop=True)
+    df = (
+        df.sort_values("for_date")
+        .reset_index(drop=True)
+        .rename(
+            columns={
+                "mRID": "mrid",
+                "businessType": "business_type",
+                "objectAggregation": "object_aggregation",
+                "outBiddingZone_Domain.mRID": "out_bidding_zone_mrid",
+                "quantity_Measure_Unit.name": "quantity_measure_unit",
+                "curveType": "curve_type",
+            }
+        )
+    )
 
     return df
 
