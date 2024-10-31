@@ -64,7 +64,7 @@ def parse_entsoe_generation(xml_string) -> pd.DataFrame:
     # Create DataFrame with new flow_type column
     df = pd.DataFrame(
         {
-            "timestamp": timestamps,
+            "for_date": timestamps,
             "generation_mw": values,
             "bidding_zone": bidding_zones,
             "unit": units,
@@ -75,7 +75,7 @@ def parse_entsoe_generation(xml_string) -> pd.DataFrame:
     )
 
     # Sort by timestamp
-    df = df.sort_values("timestamp").reset_index(drop=True)
+    df = df.sort_values("for_date").reset_index(drop=True)
     return df
 
 
@@ -137,14 +137,14 @@ def parse_entsoe_load(xml_string) -> pd.DataFrame:
     # Create DataFrame with all metadata columns
     df = pd.DataFrame(
         {
-            "timestamp": timestamps,
+            "for_date": timestamps,
             "load_mw": values,
             **metadata,  # Unpack all metadata columns
         }
     )
 
     # Sort by timestamp
-    df = df.sort_values("timestamp").reset_index(drop=True)
+    df = df.sort_values("for_date").reset_index(drop=True)
 
     return df
 
@@ -169,7 +169,7 @@ def parse_entsoe_cross_border_flows(xml_string):
 
     # Create lists to store data
     data = {
-        "timestamp": [],
+        "for_date": [],
         "value": [],
         "unit": [],
         "in_domain": [],
@@ -210,7 +210,7 @@ def parse_entsoe_cross_border_flows(xml_string):
                     position - 1
                 )
 
-                data["timestamp"].append(timestamp)
+                data["for_date"].append(timestamp)
                 data["value"].append(quantity)
                 data["unit"].append(unit)
                 data["in_domain"].append(in_domain)
@@ -221,7 +221,7 @@ def parse_entsoe_cross_border_flows(xml_string):
     df = pd.DataFrame(data)
 
     # Sort by timestamp
-    df = df.sort_values("timestamp").reset_index(drop=True)
+    df = df.sort_values("for_date").reset_index(drop=True)
 
     return df
 
@@ -283,7 +283,7 @@ def parse_entsoe_generation_by_unit(xml_string):
 
                 data.append(
                     {
-                        "timestamp": timestamp,
+                        "for_date": timestamp,
                         "value": quantity,
                         "unit": unit,
                         "domain": domain,
@@ -299,4 +299,4 @@ def parse_entsoe_generation_by_unit(xml_string):
         print("No data found in XML!")
         return None
 
-    return pd.DataFrame(data).sort_values("timestamp").reset_index(drop=True)
+    return pd.DataFrame(data).sort_values("for_date").reset_index(drop=True)
