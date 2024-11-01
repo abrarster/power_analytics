@@ -61,7 +61,7 @@ class FsWriter(FsBase):
             with open(full_path, mode) as file:
                 logger.info(f"Writing {full_path}")
                 file.write(content)
-                
+
     def delete_data(self):
         shutil.rmtree(self.base_path)
 

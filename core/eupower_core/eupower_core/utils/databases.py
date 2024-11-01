@@ -60,29 +60,38 @@ class MySqlDb:
         return pd.read_sql(query, self.conn)
 
     def write_dataframe(
-        self, df: pd.DataFrame, database_name: str, table_name: str
+        self, df: pd.DataFrame, database_name: str, table_name: str, upsert: bool = True
     ) -> None:
-        temp_table_name = f"{table_name}_{generate_random_string()}"
-        stmt_create_temp_table = f"CREATE TABLE {database_name}.{temp_table_name} LIKE {database_name}.{table_name}"
-        self.execute_statements(stmt_create_temp_table)
-        df.to_sql(
-            temp_table_name,
-            self.conn,
-            schema=database_name,
-            if_exists="replace",
-            index=False,
-        )
-        stmt_replace = f"""
-            REPLACE INTO {database_name}.{table_name}
-            SELECT * FROM {database_name}.{temp_table_name}
-            --END STATEMENT--
+        if not upsert:
+            df.to_sql(
+                table_name,
+                self.conn,
+                schema=database_name,
+                if_exists="replace",
+                index=False,
+            )
+        else:
+            temp_table_name = f"{table_name}_{generate_random_string()}"
+            stmt_create_temp_table = f"CREATE TABLE {database_name}.{temp_table_name} LIKE {database_name}.{table_name}"
+            self.execute_statements(stmt_create_temp_table)
+            df.to_sql(
+                temp_table_name,
+                self.conn,
+                schema=database_name,
+                if_exists="replace",
+                index=False,
+            )
+            stmt_replace = f"""
+                REPLACE INTO {database_name}.{table_name}
+                SELECT * FROM {database_name}.{temp_table_name}
+                --END STATEMENT--
+                """
+            stmt_drop_temp_table = f"""
+                DROP TABLE {database_name}.{temp_table_name}
+                --END STATEMENT--
             """
-        stmt_drop_temp_table = f"""
-            DROP TABLE {database_name}.{temp_table_name}
-            --END STATEMENT--
-        """
-        self.execute_statements(stmt_replace)
-        self.execute_statements(stmt_drop_temp_table)
+            self.execute_statements(stmt_replace)
+            self.execute_statements(stmt_drop_temp_table)
 
 
 def generate_random_string(length: int = 6) -> str:

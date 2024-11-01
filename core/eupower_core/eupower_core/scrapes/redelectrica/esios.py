@@ -5,10 +5,12 @@ import requests
 import json
 import logging
 import traceback
+import warnings
 from time import sleep
 from typing import Optional
 from datetime import date, timedelta
 from eupower_core.utils.exceptions import NoDataError
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 
 logger = logging.getLogger(__name__)
