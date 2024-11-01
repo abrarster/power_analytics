@@ -20,7 +20,7 @@ from eupower_core.scrapes.redelectrica.esios import (
     make_headers,
     get_indicators,
 )
-from eupower_core.scrapes.redelectrica import esios_indicators
+from eupower_core.scrapes.redelectrica import esios_indicators as ree_indicators
 from .partitions import monthly_partition
 
 warnings.simplefilter(action="ignore", category=ExperimentalWarning)
@@ -228,7 +228,7 @@ def esios_indicators_staging(
     context: AssetExecutionContext, fs: FilesystemResource, config: EsiosConfig
 ) -> None:
     indicators = config.indicators.split(",")
-    indicators = {v.upper(): getattr(esios_indicators, v.upper()) for v in indicators}
+    indicators = {v.upper(): getattr(ree_indicators, v.upper()) for v in indicators}
     start_date = pd.to_datetime(config.start_date).date()
     end_date = pd.to_datetime(config.end_date).date()
     context.log.info(
