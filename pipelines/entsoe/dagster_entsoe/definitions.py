@@ -1,7 +1,7 @@
 import warnings
 import dagster
 from eupower_core.dagster_resources import FilesystemResource, MySqlResource
-from . import assets
+from . import assets, mapping_tables
 from . import jobs
 
 warnings.filterwarnings("ignore", category=dagster.ExperimentalWarning)
@@ -15,7 +15,7 @@ RESOURCES = {
     ),
 }
 
-entsoe_assets = dagster.load_assets_from_modules([assets])
+entsoe_assets = dagster.load_assets_from_modules([assets, mapping_tables])
 defs = dagster.Definitions(
     assets=entsoe_assets,
     resources=RESOURCES,
@@ -24,5 +24,6 @@ defs = dagster.Definitions(
         jobs.job_gen_by_unit,
         jobs.job_demand,
         jobs.job_crossborder_flows,
+        jobs.job_mapping_tables,
     ],
 )
