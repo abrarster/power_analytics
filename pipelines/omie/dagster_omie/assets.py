@@ -1,17 +1,32 @@
 import requests
 import locale
 import warnings
-from datetime import date, datetime
-from dagster import asset, AssetExecutionContext, ExperimentalWarning
+import os
+import pandas as pd
+from typing import Optional, List, Tuple
+from datetime import date, datetime, timedelta
+from dagster import EnvVar, asset, AssetExecutionContext, ExperimentalWarning, Config
+from pydantic import Field
 from eupower_core.scrapes.omie import download_from_omie_fs
 from eupower_core.utils.sql import prepare_query_from_string
-from eupower_core.dagster_resources import FilesystemResource, DuckDBtoMySqlResource
+from eupower_core.dagster_resources import (
+    FilesystemResource,
+    DuckDBtoMySqlResource,
+    MySqlResource,
+)
 from eupower_core.dagster_resources.fs import FsReader
+from eupower_core.scrapes.redelectrica.esios import (
+    list_indicators,
+    make_headers,
+    get_indicators,
+)
+from eupower_core.scrapes.redelectrica import esios_indicators as ree_indicators
 from .partitions import monthly_partition
 
 warnings.simplefilter(action="ignore", category=ExperimentalWarning)
 OMIE_LOAD_ASSETS = "omie_load_assets"
 MYSQL_SCHEMA = "omie"
+REDELECTRICA_ASSETS = "redelectrica"
 locale.setlocale(locale.LC_NUMERIC, "eu_ES")
 
 
@@ -169,3 +184,127 @@ def _get_raw_omie_reader(endpoint, start: datetime, fs: FilesystemResource) -> F
 
 def str_to_float_es(x: str) -> float:
     return locale.atof(x)
+
+
+# ESIOS
+
+
+class EsiosConfig(Config):
+    indicators: str = Field(
+        default_factory=lambda: "REALTIME_HISTORY",
+        description="""
+            Esios indicator group. Valid options available at eupower_core.scrapes.redelectrica.esios_indicators.
+            Multiple indicators can be specified by separating them with commas.
+        """,
+    )
+    start_date: Optional[str] = Field(
+        default_factory=lambda: (date.today() - timedelta(days=5)).strftime("%Y-%m-%d"),
+        description="Start date for indicator history",
+    )
+    end_date: Optional[str] = Field(
+        default_factory=lambda: date.today().strftime("%Y-%m-%d"),
+        description="End date for indicator history",
+    )
+
+
+@asset(group_name=REDELECTRICA_ASSETS, tags={"storage": "mysql"})
+def esios_indicator_ids(context: AssetExecutionContext, mysql: MySqlResource) -> None:
+    api_key = EnvVar("ESIOS_API_KEY").get_value()
+    session = requests.Session()
+    headers = make_headers(api_key)
+    indicators = list_indicators(session, headers)
+    indicators = indicators.rename(columns={"name": "long_name", "id": "indicator_id"})[
+        ["indicator_id", "short_name", "long_name", "description"]
+    ]
+    mysql_db = mysql.get_db_connection()
+    with mysql_db as db:
+        db.write_dataframe(
+            indicators, "redelectrica", "esios_indicator_ids", upsert=False
+        )
+
+
+@asset(group_name=REDELECTRICA_ASSETS, tags={"storage": "filesystem"})
+def esios_indicators_staging(
+    context: AssetExecutionContext, fs: FilesystemResource, config: EsiosConfig
+) -> None:
+    indicators = config.indicators.split(",")
+    indicators = {v.upper(): getattr(ree_indicators, v.upper()) for v in indicators}
+    start_date = pd.to_datetime(config.start_date).date()
+    end_date = pd.to_datetime(config.end_date).date()
+    context.log.info(
+        f"Downloading indicators {indicators} from {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}"
+    )
+
+    api_key = EnvVar("ESIOS_API_KEY").get_value()
+    session = requests.Session()
+    headers = make_headers(api_key)
+    writer = fs.get_writer(f"redelectrica/esios/raw")
+    if os.path.exists(writer.base_path):
+        writer.delete_data()
+    for indicator_group_name, indicator_ids in indicators.items():
+        for chunk_start, chunk_end in _split_dates_into_chunk(start_date, end_date):
+            try:
+                response = get_indicators(
+                    session, headers, indicator_ids, chunk_start, chunk_end
+                )
+                writer.write_file(
+                    f"{indicator_group_name}_{chunk_start.strftime('%Y%m%d')}_{chunk_end.strftime('%Y%m%d')}.csv",
+                    response,
+                )
+                context.log.info(
+                    f"Downloaded {indicator_group_name} for {chunk_start.strftime('%Y-%m-%d')} to {chunk_end.strftime('%Y-%m-%d')}"
+                )
+            except:
+                context.log.warning(
+                    f"Failed to download {indicator_group_name} for {chunk_start.strftime('%Y-%m-%d')} to {chunk_end.strftime('%Y-%m-%d')}"
+                )
+                raise
+
+
+@asset(
+    deps=["esios_indicators_staging"],
+    group_name=REDELECTRICA_ASSETS,
+    tags={"storage": "mysql"},
+)
+def esios_indicators(
+    context: AssetExecutionContext, fs: FilesystemResource, mysql: MySqlResource
+) -> None:
+    reader = fs.get_reader("redelectrica/esios/raw")
+    files = reader.list_files()
+    mysql_db = mysql.get_db_connection()
+    stmt_create_table = """
+        CREATE TABLE IF NOT EXISTS redelectrica.esios_indicators (
+            indicator_id INT,
+            short_name VARCHAR(255),
+            geo_id BIGINT,
+            geo_name VARCHAR(255),
+            for_date TIMESTAMP,
+            for_date_cet TIMESTAMP,
+            value FLOAT,
+            composited BOOL,
+            step_type VARCHAR(255),
+            disaggregated BOOL,
+            values_updated_at TIMESTAMP,
+            constraint pk_entry PRIMARY KEY (indicator_id, geo_id,for_date)
+        )
+    """
+    with mysql_db as db:
+        db.execute_statements(stmt_create_table)
+        for file in files:
+            df = pd.read_csv(f"{reader.base_path}/{file}", index_col=False)
+            db.write_dataframe(df, "redelectrica", "esios_indicators", upsert=True)
+
+
+def _split_dates_into_chunk(start: date, end: date) -> List[Tuple[date, date]]:
+    dr = pd.date_range(start, end, freq="D")
+    if len(dr) < 8:
+        return [
+            (start, end),
+        ]
+    n = 7
+    chunked_list = [dr[i : i + n] for i in range(0, len(dr), n)]
+    date_range = []
+    for c in chunked_list:
+        sorted_c = sorted(c)
+        date_range.append((sorted_c[0].date(), sorted_c[-1].date()))
+    return date_range

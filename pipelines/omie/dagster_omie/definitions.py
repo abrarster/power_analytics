@@ -1,8 +1,12 @@
 import warnings
 from dagster import Definitions, load_assets_from_modules, EnvVar, ExperimentalWarning
-from eupower_core.dagster_resources import FilesystemResource, DuckDBtoMySqlResource
+from eupower_core.dagster_resources import (
+    FilesystemResource,
+    DuckDBtoMySqlResource,
+    MySqlResource,
+)
 from . import assets
-from .jobs import download_job
+from .jobs import job_omie, job_redelectrica
 
 warnings.filterwarnings("ignore", category=ExperimentalWarning)
 
@@ -14,9 +18,13 @@ RESOURCES = {
     "duckdb_mysql": DuckDBtoMySqlResource(
         mysql_user=EnvVar("MYSQL_USER"), mysql_password=EnvVar("MYSQL_PWD")
     ),
+    "mysql": MySqlResource(
+        mysql_user=EnvVar("MYSQL_USER"),
+        mysql_password=EnvVar("MYSQL_PWD"),
+    ),
 }
 
 omie_assets = load_assets_from_modules([assets])
-all_jobs = [download_job]
+all_jobs = [job_omie, job_redelectrica]
 
 defs = Definitions(assets=omie_assets, resources=RESOURCES, jobs=all_jobs)

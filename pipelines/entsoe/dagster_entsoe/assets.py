@@ -1,11 +1,14 @@
 import dagster
 import pandas as pd
 import requests
+import warnings
 from datetime import date, datetime
 from time import sleep
 from entsoe.exceptions import NoMatchingDataError, InvalidPSRTypeError
 from eupower_core.scrapes import entsoe
 from eupower_core.dagster_resources import FilesystemResource, MySqlResource
+
+warnings.filterwarnings("ignore", category=dagster.ExperimentalWarning)
 
 ASSET_GROUP = "entsoe"
 country_codes = {
