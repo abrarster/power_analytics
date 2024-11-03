@@ -209,10 +209,7 @@ def query_generation_mix_15min(
 
 def _parse_generation_bytype(gen_data: dict):
     return pd.DataFrame.from_records(gen_data["values"]).assign(
-        production_type=gen_data["production_type"],
-        start_date=lambda x: _try_convert_tz(x.start_date),
-        end_date=lambda x: _try_convert_tz(x.end_date),
-        updated_date=lambda x: _try_convert_tz(x.updated_date),
+        production_type=gen_data["production_type"]
     )[["production_type", "start_date", "end_date", "updated_date", "value"]]
 
 
@@ -232,15 +229,9 @@ def query_consolidated_consumption(
     if len(response) == 0:
         df = pd.DataFrame(columns=["updated_date", "start_date", "end_date", "value"])
     else:
-        df = (
-            pd.DataFrame.from_records(response[0]["values"])
-            .assign(
-                start_date=lambda x: _try_convert_tz(x.start_date),
-                end_date=lambda x: _try_convert_tz(x.end_date),
-                updated_date=lambda x: _try_convert_tz(x.updated_date),
-            )[["updated_date", "start_date", "end_date", "value"]]
-            .sort_values("start_date")
-        )
+        df = pd.DataFrame.from_records(response[0]["values"])[
+            ["updated_date", "start_date", "end_date", "value"]
+        ].sort_values("start_date")
         df = df.pipe(_strip_excess_hours, start_date=start_date, end_date=end_date)
     return df
 
@@ -281,12 +272,9 @@ def query_realtime_consumption(
     response = json.loads(response.content)
     return (
         pd.DataFrame.from_records(response["short_term"][0]["values"])
-        .assign(
-            start_date=lambda x: pd.to_datetime(x.start_date),
-            end_date=lambda x: pd.to_datetime(x.end_date),
-            updated_date=lambda x: pd.to_datetime(x.updated_date),
-            data_type=data_type,
-        )[["data_type", "updated_date", "start_date", "end_date", "value"]]
+        .assign(data_type=data_type)[
+            ["data_type", "updated_date", "start_date", "end_date", "value"]
+        ]
         .sort_values("start_date")
     )
 

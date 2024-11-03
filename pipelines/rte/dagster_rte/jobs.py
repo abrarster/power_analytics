@@ -23,7 +23,7 @@ def create_op_config(config: assets.RteObservationConfig) -> dict:
                     "days_forward": config["days_forward"],
                 }
             },
-            "rte_realtime_consumption": {
+            "rte_realtime_consumption_raw": {
                 "config": {
                     "days_back": config["days_back"],
                     "days_forward": config["days_forward"],
@@ -58,7 +58,7 @@ rte_config_schema = {
 
 rte_core_assets = AssetSelection.assets(
     assets.rte_generation_byunit,
-    assets.rte_realtime_consumption,
+    assets.rte_realtime_consumption_raw,
     assets.rte_generation_byfuel_15min,
     assets.rte_generation_byfuel,
     assets.rte_exchange_phys_flows,

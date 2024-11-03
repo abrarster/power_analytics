@@ -41,9 +41,7 @@ class RteObservationConfig(Config):
     tags={"storage": "filesystem"},
 )
 def eco2mix_generation_raw(
-    context: AssetExecutionContext, 
-    fs: FilesystemResource, 
-    config: RteObservationConfig
+    context: AssetExecutionContext, fs: FilesystemResource, config: RteObservationConfig
 ):
     start_date = date.today() - timedelta(days=config.days_back)
     end_date = date.today() + timedelta(days=config.days_forward)
@@ -60,9 +58,7 @@ def eco2mix_generation_raw(
 
 
 @asset(
-    deps=["eco2mix_generation_raw"], 
-    tags={"storage": "mysql"}, 
-    group_name=ASSETS_GROUP
+    deps=["eco2mix_generation_raw"], tags={"storage": "mysql"}, group_name=ASSETS_GROUP
 )
 def eco2mix_balances(
     context: AssetExecutionContext,
@@ -336,7 +332,7 @@ def rte_generation_byfuel(
 
 
 @asset(tags={"storage": "mysql"}, group_name=ASSETS_GROUP)
-def rte_realtime_consumption(
+def rte_realtime_consumption_raw(
     context: AssetExecutionContext, mysql: MySqlResource, config: RteObservationConfig
 ):
     rte_id = EnvVar("RTE_ID").get_value()
@@ -347,11 +343,11 @@ def rte_realtime_consumption(
     mysql_db = mysql.get_db_connection()
     with mysql_db as db:
         stmt_create_table = f"""
-            CREATE TABLE IF NOT EXISTS {MYSQL_SCHEMA}.realtime_consumption (
+            CREATE TABLE IF NOT EXISTS {MYSQL_SCHEMA}.realtime_consumption_raw (
                 data_type VARCHAR(255),
-                updated_date TIMESTAMP,
-                start_date TIMESTAMP,
-                end_date TIMESTAMP,
+                updated_date VARCHAR(255),
+                start_date VARCHAR(255),
+                end_date VARCHAR(255),
                 value FLOAT,
                 PRIMARY KEY (start_date)
             )
@@ -361,7 +357,7 @@ def rte_realtime_consumption(
         df = rte.query_realtime_consumption(
             token_type, access_token, start_date, end_date, "observed"
         )
-        db.write_dataframe(df, MYSQL_SCHEMA, "realtime_consumption")
+        db.write_dataframe(df, MYSQL_SCHEMA, "realtime_consumption_raw")
 
 
 @asset(tags={"storage": "mysql"}, group_name=ASSETS_GROUP)
