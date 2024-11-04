@@ -2,7 +2,7 @@ import dagster
 import pandas as pd
 import entsoe.mappings as mappings
 from eupower_core.dagster_resources import MySqlResource
-from .assets import ASSET_GROUP
+from .constants import ASSET_GROUP
 
 SCHEMA = "entsoe"
 
