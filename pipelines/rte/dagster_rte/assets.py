@@ -16,6 +16,8 @@ from eupower_core.dagster_resources import (
     FilesystemResource,
     MySqlResource,
     DuckDBtoMySqlResource,
+    PostgresResource,
+    DuckDBtoPostgresResource
 )
 from eupower_core.scrapes import rte
 
@@ -58,12 +60,12 @@ def eco2mix_generation_raw(
 
 
 @asset(
-    deps=["eco2mix_generation_raw"], tags={"storage": "mysql"}, group_name=ASSETS_GROUP
+    deps=["eco2mix_generation_raw"], tags={"storage": "postgres"}, group_name=ASSETS_GROUP
 )
 def eco2mix_balances(
     context: AssetExecutionContext,
     fs: FilesystemResource,
-    duckdb_mysql: DuckDBtoMySqlResource,
+    duckdb_postgres: DuckDBtoPostgresResource,
 ):
     reader = fs.get_reader()
     path_glob = os.path.join(reader.base_path, "rte/eco2mix/raw/*/FR.csv")
@@ -163,82 +165,121 @@ def eco2mix_balances(
         --END STATEMENT--
         """
 
-    template_mysql_etl = """
-        CALL mysql_execute('mysql_db', 'DROP TABLE IF EXISTS {mysql_schema}.eco2mix_balances_temp')
+    template_postgres_etl = """
+        CALL postgres_execute('postgres_db', 'DROP TABLE IF EXISTS {schema}.eco2mix_balances_temp')
         --END STATEMENT--
 
-        CALL mysql_execute(
-            'mysql_db',
-            'CREATE TABLE IF NOT EXISTS {mysql_schema}.eco2mix_balances (
+        CALL postgres_execute(
+            'postgres_db',
+            'CREATE TABLE IF NOT EXISTS {schema}.eco2mix_balances (
                 perimeter VARCHAR(255),
                 nature VARCHAR(255),
-                for_date TIMESTAMP,
-                consumption FLOAT,
-                forecast_j_minus_1 FLOAT,
-                forecast_j FLOAT,
-                fuel_oil FLOAT,
-                coal FLOAT,
-                gas FLOAT,
-                nuclear FLOAT,
-                wind FLOAT,
-                solar FLOAT,
-                hydro FLOAT,
-                pumped_storage FLOAT,
-                bioenergy FLOAT,
-                border_flows FLOAT,
-                co2_rate FLOAT,
-                uk_flows FLOAT,
-                spain_flows FLOAT,
-                italy_flows FLOAT,
-                switzerland_flows FLOAT,
-                germany_belgium_flows FLOAT,
-                fuel_oil_tac FLOAT,
-                fuel_oil_cogen FLOAT,
-                fuel_oil_other FLOAT,
-                gas_tac FLOAT,
-                gas_cogen FLOAT,
-                gas_ccgt FLOAT,
-                gas_other FLOAT,
-                hydro_run_of_river FLOAT,
-                hydro_reservoir FLOAT,
-                hydro_wwtp_turbines FLOAT,
-                bioenergy_waste FLOAT,
-                bioenergy_biomass FLOAT,
-                bioenergy_biogas FLOAT,
-                battery_storage FLOAT,
-                battery_clearance FLOAT,
-                onshore_wind FLOAT,
-                offshore_wind FLOAT,
-                corrected_consumption FLOAT,
-                CONSTRAINT pk_record PRIMARY KEY (perimeter, nature, for_date)
+                for_date TIMESTAMP WITHOUT TIME ZONE,
+                consumption DOUBLE PRECISION,
+                forecast_j_minus_1 DOUBLE PRECISION,
+                forecast_j DOUBLE PRECISION,
+                fuel_oil DOUBLE PRECISION,
+                coal DOUBLE PRECISION,
+                gas DOUBLE PRECISION,
+                nuclear DOUBLE PRECISION,
+                wind DOUBLE PRECISION,
+                solar DOUBLE PRECISION,
+                hydro DOUBLE PRECISION,
+                pumped_storage DOUBLE PRECISION,
+                bioenergy DOUBLE PRECISION,
+                border_flows DOUBLE PRECISION,
+                co2_rate DOUBLE PRECISION,
+                uk_flows DOUBLE PRECISION,
+                spain_flows DOUBLE PRECISION,
+                italy_flows DOUBLE PRECISION,
+                switzerland_flows DOUBLE PRECISION,
+                germany_belgium_flows DOUBLE PRECISION,
+                fuel_oil_tac DOUBLE PRECISION,
+                fuel_oil_cogen DOUBLE PRECISION,
+                fuel_oil_other DOUBLE PRECISION,
+                gas_tac DOUBLE PRECISION,
+                gas_cogen DOUBLE PRECISION,
+                gas_ccgt DOUBLE PRECISION,
+                gas_other DOUBLE PRECISION,
+                hydro_run_of_river DOUBLE PRECISION,
+                hydro_reservoir DOUBLE PRECISION,
+                hydro_wwtp_turbines DOUBLE PRECISION,
+                bioenergy_waste DOUBLE PRECISION,
+                bioenergy_biomass DOUBLE PRECISION,
+                bioenergy_biogas DOUBLE PRECISION,
+                battery_storage DOUBLE PRECISION,
+                battery_clearance DOUBLE PRECISION,
+                onshore_wind DOUBLE PRECISION,
+                offshore_wind DOUBLE PRECISION,
+                corrected_consumption DOUBLE PRECISION,
+                PRIMARY KEY (perimeter, nature, for_date)
             )'
         )
         --END STATEMENT--
 
-        CREATE TABLE mysql_db.{mysql_schema}.eco2mix_balances_temp 
+        CREATE TABLE postgres_db.{schema}.eco2mix_balances_temp 
         AS FROM memory.eco2mix_cleaned
         --END STATEMENT--
 
-        CALL mysql_execute(
-            'mysql_db',
-            'REPLACE INTO {mysql_schema}.eco2mix_balances SELECT * FROM {mysql_schema}.eco2mix_balances_temp'
+        CALL postgres_execute(
+            'postgres_db',
+            'INSERT INTO {schema}.eco2mix_balances 
+             SELECT * FROM {schema}.eco2mix_balances_temp 
+             ON CONFLICT (perimeter, nature, for_date) DO UPDATE 
+             SET consumption = EXCLUDED.consumption,
+                 forecast_j_minus_1 = EXCLUDED.forecast_j_minus_1,
+                 forecast_j = EXCLUDED.forecast_j,
+                 fuel_oil = EXCLUDED.fuel_oil,
+                 coal = EXCLUDED.coal,
+                 gas = EXCLUDED.gas,
+                 nuclear = EXCLUDED.nuclear,
+                 wind = EXCLUDED.wind,
+                 solar = EXCLUDED.solar,
+                 hydro = EXCLUDED.hydro,
+                 pumped_storage = EXCLUDED.pumped_storage,
+                 bioenergy = EXCLUDED.bioenergy,
+                 border_flows = EXCLUDED.border_flows,
+                 co2_rate = EXCLUDED.co2_rate,
+                 uk_flows = EXCLUDED.uk_flows,
+                 spain_flows = EXCLUDED.spain_flows,
+                 italy_flows = EXCLUDED.italy_flows,
+                 switzerland_flows = EXCLUDED.switzerland_flows,
+                 germany_belgium_flows = EXCLUDED.germany_belgium_flows,
+                 fuel_oil_tac = EXCLUDED.fuel_oil_tac,
+                 fuel_oil_cogen = EXCLUDED.fuel_oil_cogen,
+                 fuel_oil_other = EXCLUDED.fuel_oil_other,
+                 gas_tac = EXCLUDED.gas_tac,
+                 gas_cogen = EXCLUDED.gas_cogen,
+                 gas_ccgt = EXCLUDED.gas_ccgt,
+                 gas_other = EXCLUDED.gas_other,
+                 hydro_run_of_river = EXCLUDED.hydro_run_of_river,
+                 hydro_reservoir = EXCLUDED.hydro_reservoir,
+                 hydro_wwtp_turbines = EXCLUDED.hydro_wwtp_turbines,
+                 bioenergy_waste = EXCLUDED.bioenergy_waste,
+                 bioenergy_biomass = EXCLUDED.bioenergy_biomass,
+                 bioenergy_biogas = EXCLUDED.bioenergy_biogas,
+                 battery_storage = EXCLUDED.battery_storage,
+                 battery_clearance = EXCLUDED.battery_clearance,
+                 onshore_wind = EXCLUDED.onshore_wind,
+                 offshore_wind = EXCLUDED.offshore_wind,
+                 corrected_consumption = EXCLUDED.corrected_consumption'
         )
         --END STATEMENT--
 
-        CALL mysql_execute('mysql_db', 'DROP TABLE {mysql_schema}.eco2mix_balances_temp')
+        CALL postgres_execute('postgres_db', 'DROP TABLE {schema}.eco2mix_balances_temp')
         --END STATEMENT--
         """
     stmt_duckdb_etl = template_duckdb_etl.format(path_glob=path_glob)
-    stmt_mysql_etl = template_mysql_etl.format(mysql_schema=MYSQL_SCHEMA)
-    with duckdb_mysql.get_db_connection(MYSQL_SCHEMA) as conn:
+    stmt_postgres_etl = template_postgres_etl.format(schema=MYSQL_SCHEMA)
+    with duckdb_postgres.get_db_connection(MYSQL_SCHEMA) as conn:
         conn.validate_mysql_schema()
         conn.execute(stmt_duckdb_etl)
-        conn.execute(stmt_mysql_etl)
+        conn.execute(stmt_postgres_etl)
 
 
-@asset(tags={"storage": "mysql"}, group_name=ASSETS_GROUP)
+@asset(tags={"storage": "postgres"}, group_name=ASSETS_GROUP)
 def rte_generation_byunit(
-    context: AssetExecutionContext, mysql: MySqlResource, config: RteObservationConfig
+    context: AssetExecutionContext, postgres: PostgresResource, config: RteObservationConfig
 ):
 
     rte_id = EnvVar("RTE_ID").get_value()
@@ -251,7 +292,7 @@ def rte_generation_byunit(
     dates = [x.date() for x in list(dates)]
 
     token_type, access_token = rte.get_token(rte_id, rte_secret)
-    mysql_db = mysql.get_db_connection()
+    postgres_db = postgres.get_db_connection()
     stmt_create_table = """
         CREATE TABLE IF NOT EXISTS rte.rte_query_generation_byunit (
             production_type VARCHAR(255),
@@ -261,19 +302,19 @@ def rte_generation_byunit(
             end_date TIMESTAMP,
             updated_date TIMESTAMP,
             value BIGINT,
-            CONSTRAINT pk_unit_date PRIMARY KEY (unit_code, start_date)
+            PRIMARY KEY (unit_code, start_date)
         )
     """
-    with mysql_db as db:
+    with postgres_db as db:
         db.execute_statements(stmt_create_table)
         for dt in dates:
             df = rte.query_generation_byunit(token_type, access_token, dt, dt)
             db.write_dataframe(df, MYSQL_SCHEMA, "rte_query_generation_byunit")
 
 
-@asset(tags={"storage": "mysql"}, group_name=ASSETS_GROUP)
+@asset(tags={"storage": "postgres"}, group_name=ASSETS_GROUP)
 def rte_generation_byfuel_15min(
-    context: AssetExecutionContext, mysql: MySqlResource, config: RteObservationConfig
+    context: AssetExecutionContext, postgres: PostgresResource, config: RteObservationConfig
 ):
     rte_id = EnvVar("RTE_ID").get_value()
     rte_secret = EnvVar("RTE_SECRET").get_value()
@@ -281,15 +322,15 @@ def rte_generation_byfuel_15min(
     end_date = date.today() + timedelta(days=config.days_forward)
     date_range = pd.date_range(start=start_date, end=end_date, freq="D")
 
-    mysql_db = mysql.get_db_connection()
-    with mysql_db as db:
+    postgres_db = postgres.get_db_connection()
+    with postgres_db as db:
         stmt_create_table = f"""
             CREATE TABLE IF NOT EXISTS {MYSQL_SCHEMA}.generation_by_fuel_15min (
                 production_type VARCHAR(255),
                 production_subtype VARCHAR(255),
                 start_date TIMESTAMP,
                 mw FLOAT,
-                CONSTRAINT pk_entry PRIMARY KEY (production_type, production_subtype, start_date)
+                PRIMARY KEY (production_type, production_subtype, start_date)
             )
         """
         db.execute_statements(stmt_create_table)
@@ -304,25 +345,25 @@ def rte_generation_byfuel_15min(
                 continue
 
 
-@asset(tags={"storage": "mysql"}, group_name=ASSETS_GROUP)
+@asset(tags={"storage": "postgres"}, group_name=ASSETS_GROUP)
 def rte_generation_byfuel(
-    context: AssetExecutionContext, mysql: MySqlResource, config: RteObservationConfig
+    context: AssetExecutionContext, postgres: PostgresResource, config: RteObservationConfig
 ):
     rte_id = EnvVar("RTE_ID").get_value()
     rte_secret = EnvVar("RTE_SECRET").get_value()
     start_date = date.today() - timedelta(days=config.days_back)
     end_date = date.today() + timedelta(days=config.days_forward)
 
-    mysql_db = mysql.get_db_connection()
-    with mysql_db as db:
+    postgres_db = postgres.get_db_connection()
+    with postgres_db as db:
         stmt_create_table = f"""
             CREATE TABLE IF NOT EXISTS {MYSQL_SCHEMA}.generation_by_fuel (
                 production_type VARCHAR(255),
-                start_date TIMESTAMP,
-                end_date TIMESTAMP,
-                updated_date TIMESTAMP,
+                start_date VARCHAR(255),
+                end_date VARCHAR(255),
+                updated_date VARCHAR(255),
                 value FLOAT,
-                CONSTRAINT pk_fuel_date PRIMARY KEY (production_type, start_date)
+                PRIMARY KEY (production_type, start_date)
             )
         """
         db.execute_statements(stmt_create_table)
@@ -331,24 +372,24 @@ def rte_generation_byfuel(
         db.write_dataframe(df, MYSQL_SCHEMA, "generation_by_fuel")
 
 
-@asset(tags={"storage": "mysql"}, group_name=ASSETS_GROUP)
+@asset(tags={"storage": "postgres"}, group_name=ASSETS_GROUP)
 def rte_realtime_consumption_raw(
-    context: AssetExecutionContext, mysql: MySqlResource, config: RteObservationConfig
+    context: AssetExecutionContext, postgres: PostgresResource, config: RteObservationConfig
 ):
     rte_id = EnvVar("RTE_ID").get_value()
     rte_secret = EnvVar("RTE_SECRET").get_value()
     start_date = date.today() - timedelta(days=config.days_back)
     end_date = date.today() + timedelta(days=config.days_forward)
 
-    mysql_db = mysql.get_db_connection()
-    with mysql_db as db:
+    postgres_db = postgres.get_db_connection()
+    with postgres_db as db:
         stmt_create_table = f"""
             CREATE TABLE IF NOT EXISTS {MYSQL_SCHEMA}.realtime_consumption_raw (
                 data_type VARCHAR(255),
                 updated_date VARCHAR(255),
                 start_date VARCHAR(255),
                 end_date VARCHAR(255),
-                value FLOAT,
+                value DOUBLE PRECISION,
                 PRIMARY KEY (start_date)
             )
         """
@@ -360,9 +401,9 @@ def rte_realtime_consumption_raw(
         db.write_dataframe(df, MYSQL_SCHEMA, "realtime_consumption_raw")
 
 
-@asset(tags={"storage": "mysql"}, group_name=ASSETS_GROUP)
+@asset(tags={"storage": "postgres"}, group_name=ASSETS_GROUP)
 def rte_exchange_phys_flows(
-    context: AssetExecutionContext, mysql: MySqlResource, config: RteObservationConfig
+    context: AssetExecutionContext, postgres: PostgresResource, config: RteObservationConfig
 ):
     rte_id = EnvVar("RTE_ID").get_value()
     rte_secret = EnvVar("RTE_SECRET").get_value()
@@ -370,8 +411,8 @@ def rte_exchange_phys_flows(
     end_date = date.today() + timedelta(days=config.days_forward)
 
     countries = list(rte.EXCHANGE_COUNTERPARTIES.keys())
-    mysql_db = mysql.get_db_connection()
-    with mysql_db as db:
+    postgres_db = postgres.get_db_connection()
+    with postgres_db as db:
         stmt_create_table = f"""
             CREATE TABLE IF NOT EXISTS {MYSQL_SCHEMA}.exchange_phys_flows (
                 counterparty VARCHAR(10),
@@ -379,7 +420,7 @@ def rte_exchange_phys_flows(
                 imports FLOAT,
                 exports FLOAT,
                 net_imports FLOAT,
-                CONSTRAINT pk_entry PRIMARY KEY (counterparty, for_date)
+                PRIMARY KEY (counterparty, for_date)
             )
         """
         db.execute_statements(stmt_create_table)

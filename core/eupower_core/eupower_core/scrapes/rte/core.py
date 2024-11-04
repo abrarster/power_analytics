@@ -172,7 +172,7 @@ def query_generation_bytype(
         ],
         ignore_index=True,
     )
-    return response.pipe(_strip_excess_hours, start_date=start_date, end_date=end_date)
+    return response
 
 
 def query_generation_mix_15min(
