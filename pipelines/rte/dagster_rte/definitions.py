@@ -4,6 +4,8 @@ from eupower_core.dagster_resources import (
     FilesystemResource,
     DuckDBtoMySqlResource,
     MySqlResource,
+    PostgresResource,
+    DuckDBtoPostgresResource,
 )
 from . import assets
 from .jobs import download_job
@@ -18,6 +20,12 @@ RESOURCES = {
     ),
     "mysql": MySqlResource(
         mysql_user=EnvVar("MYSQL_USER"), mysql_password=EnvVar("MYSQL_PWD")
+    ),
+    "postgres": PostgresResource(
+        user=EnvVar("POSTGRES_USER"), password=EnvVar("POSTGRES_PWD")
+    ),
+    "duckdb_postgres": DuckDBtoPostgresResource(
+        user=EnvVar("POSTGRES_USER"), password=EnvVar("POSTGRES_PWD")
     ),
 }
 

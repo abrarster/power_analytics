@@ -6,7 +6,7 @@ from datetime import date, datetime
 from time import sleep
 from entsoe.exceptions import NoMatchingDataError, InvalidPSRTypeError
 from eupower_core.scrapes import entsoe
-from eupower_core.dagster_resources import FilesystemResource, MySqlResource
+from eupower_core.dagster_resources import FilesystemResource, MySqlResource, PostgresResource
 from .constants import ASSET_GROUP
 from .mapping_tables import entsoe_areas, entsoe_psr_types
 
@@ -48,9 +48,11 @@ def entsoe_generation_by_fuel_raw(
     region = context.partition_key.keys_by_dimension["region"]
 
     start_date, end_date = _get_date_window(for_date)
-    output_path = fs.get_writer(
+    writer = fs.get_writer(
         f"entsoe/generation_by_fuel/{start_date.strftime('%Y%m%d')}/{region}"
-    ).base_path
+    )
+    writer.delete_data()
+    output_path = writer.base_path
     scraper = entsoe.FileWritingEntsoeScraper(
         api_key=api_key, output_dir=output_path
     ).set_dates(start_date, end_date)
@@ -83,10 +85,10 @@ def entsoe_generation_by_fuel_raw(
         }
     ),
     group_name=ASSET_GROUP,
-    tags={"storage": "mysql"},
+    tags={"storage": "postgres"},
 )
 def entsoe_generation_by_fuel(
-    context: dagster.AssetExecutionContext, fs: FilesystemResource, mysql: MySqlResource
+    context: dagster.AssetExecutionContext, fs: FilesystemResource, postgres: PostgresResource
 ):
     for_date = context.partition_key.keys_by_dimension["date"]
     region = context.partition_key.keys_by_dimension["region"]
@@ -95,24 +97,24 @@ def entsoe_generation_by_fuel(
     ).base_path
     parser = entsoe.EntsoeFileParser(folder_path)
     df = parser.parse_files()
-    mysql_db = mysql.get_db_connection()
+    postgres_db = postgres.get_db_connection()
     stmt_create_table = """
-        CREATE DATABASE IF NOT EXISTS entsoe
+        CREATE SCHEMA IF NOT EXISTS entsoe
         --END STATEMENT--
 
         CREATE TABLE IF NOT EXISTS entsoe.entsoe_generation_by_fuel (
-            for_date TIMESTAMP,
+            for_date VARCHAR(255),
             generation_mw FLOAT,
             bidding_zone VARCHAR(255),
             unit VARCHAR(255),
             psr_type VARCHAR(255),
             doc_type VARCHAR(255),
             flow_type VARCHAR(255),
-            CONSTRAINT pk_record PRIMARY KEY (for_date, bidding_zone, psr_type, flow_type)
+            PRIMARY KEY (for_date, bidding_zone, psr_type, flow_type)
         )
         --END STATEMENT--
     """
-    with mysql_db as db:
+    with postgres_db as db:
         db.execute_statements(stmt_create_table)
         db.write_dataframe(df, "entsoe", "entsoe_generation_by_fuel")
 
@@ -120,13 +122,13 @@ def entsoe_generation_by_fuel(
 @dagster.asset(
     deps=[entsoe_generation_by_fuel, entsoe_areas, entsoe_psr_types],
     group_name=ASSET_GROUP,
-    tags={"storage": "mysql"},
+    tags={"storage": "postgres"},
 )
 def fct_entsoe_generation_by_fuel(
-    context: dagster.AssetExecutionContext, mysql: MySqlResource
+    context: dagster.AssetExecutionContext, postgres: PostgresResource
 ):
     stmt = """
-        CREATE DATABASE IF NOT EXISTS entsoe
+        CREATE SCHEMA IF NOT EXISTS entsoe
         --END STATEMENT--
 
         CREATE TABLE IF NOT EXISTS entsoe.fct_entsoe_generation_by_fuel (
@@ -135,9 +137,9 @@ def fct_entsoe_generation_by_fuel(
             bidding_zone VARCHAR(10),
             fuel VARCHAR(255),
             flow_type VARCHAR(255),
-            for_date TIMESTAMP,
+            for_date VARCHAR(255),
             generation_mw FLOAT,
-            CONSTRAINT pk_record PRIMARY KEY (bidding_zone_code, psr_type, flow_type, for_date)
+            PRIMARY KEY (bidding_zone_code, psr_type, flow_type, for_date)
         )
         --END STATEMENT--
 
@@ -157,7 +159,7 @@ def fct_entsoe_generation_by_fuel(
         INNER JOIN entsoe.psr_types c on a.psr_type = c.fuel_code
         --END STATEMENT--
     """
-    with mysql.get_db_connection() as db:
+    with postgres.get_db_connection() as db:
         db.execute_statements(stmt)
 
 
@@ -177,9 +179,11 @@ def entsoe_demand_raw(context: dagster.AssetExecutionContext, fs: FilesystemReso
     region = context.partition_key.keys_by_dimension["region"]
 
     start_date, end_date = _get_date_window(for_date)
-    output_path = fs.get_writer(
+    writer = fs.get_writer(
         f"entsoe/demand/{start_date.strftime('%Y%m%d')}/{region}"
-    ).base_path
+    )
+    writer.delete_data()
+    output_path = writer.base_path
     scraper = entsoe.FileWritingEntsoeScraper(
         api_key=api_key, output_dir=output_path
     ).set_dates(start_date, end_date)
@@ -200,10 +204,10 @@ def entsoe_demand_raw(context: dagster.AssetExecutionContext, fs: FilesystemReso
         }
     ),
     group_name=ASSET_GROUP,
-    tags={"storage": "mysql"},
+    tags={"storage": "postgres"},
 )
 def entsoe_demand(
-    context: dagster.AssetExecutionContext, fs: FilesystemResource, mysql: MySqlResource
+    context: dagster.AssetExecutionContext, fs: FilesystemResource, postgres: PostgresResource
 ):
     for_date = context.partition_key.keys_by_dimension["date"]
     region = context.partition_key.keys_by_dimension["region"]
@@ -212,25 +216,25 @@ def entsoe_demand(
     ).base_path
     parser = entsoe.EntsoeFileParser(folder_path)
     df = parser.parse_files()
-    mysql_db = mysql.get_db_connection()
+    postgres_db = postgres.get_db_connection()
     stmt_create_table = """
-        CREATE DATABASE IF NOT EXISTS entsoe
+        CREATE SCHEMA IF NOT EXISTS entsoe
         --END STATEMENT--
 
         CREATE TABLE IF NOT EXISTS entsoe.entsoe_demand (
-            for_date TIMESTAMP,
+            for_date VARCHAR(255),
             load_mw FLOAT,
-            mrid BIGINT,
+            mrid VARCHAR(255),
             business_type VARCHAR(255),
             object_aggregation VARCHAR(255),
             out_bidding_zone_mrid VARCHAR(255),
             quantity_measure_unit VARCHAR(255),
             curve_type VARCHAR(255),
-            CONSTRAINT pk_record PRIMARY KEY (for_date, out_bidding_zone_mrid)
+            PRIMARY KEY (for_date, out_bidding_zone_mrid)
         )
         --END STATEMENT--
     """
-    with mysql_db as db:
+    with postgres_db as db:
         db.execute_statements(stmt_create_table)
         db.write_dataframe(df, "entsoe", "entsoe_demand")
 
@@ -255,9 +259,11 @@ def entsoe_generation_by_unit_raw(
     region = context.partition_key.keys_by_dimension["region"]
 
     start_date, end_date = _get_date_window(for_date)
-    output_path = fs.get_writer(
+    writer = fs.get_writer(
         f"entsoe/generation_by_unit/{start_date.strftime('%Y%m%d')}/{region}"
-    ).base_path
+    )
+    writer.delete_data()
+    output_path = writer.base_path
     scraper = entsoe.FileWritingEntsoeScraper(
         api_key=api_key, output_dir=output_path
     ).set_dates(start_date, end_date)
@@ -300,10 +306,10 @@ def entsoe_generation_by_unit_raw(
         }
     ),
     group_name=ASSET_GROUP,
-    tags={"storage": "mysql"},
+    tags={"storage": "postgres"},
 )
 def entsoe_generation_by_unit(
-    context: dagster.AssetExecutionContext, fs: FilesystemResource, mysql: MySqlResource
+    context: dagster.AssetExecutionContext, fs: FilesystemResource, postgres: PostgresResource
 ):
     for_date = context.partition_key.keys_by_dimension["date"]
     region = context.partition_key.keys_by_dimension["region"]
@@ -312,13 +318,13 @@ def entsoe_generation_by_unit(
     ).base_path
     parser = entsoe.EntsoeFileParser(folder_path)
     df = parser.parse_files()
-    mysql_db = mysql.get_db_connection()
+    postgres_db = postgres.get_db_connection()
     stmt_create_table = """
-        CREATE DATABASE IF NOT EXISTS entsoe
+        CREATE SCHEMA IF NOT EXISTS entsoe
         --END STATEMENT--
 
         CREATE TABLE IF NOT EXISTS entsoe.entsoe_generation_by_unit (
-            for_date TIMESTAMP,
+            for_date VARCHAR(255),
             value FLOAT,
             unit VARCHAR(255),
             domain VARCHAR(255),
@@ -327,11 +333,11 @@ def entsoe_generation_by_unit(
             registered_resource VARCHAR(255),
             psr_name VARCHAR(255),
             psr_mrid VARCHAR(255),
-            CONSTRAINT pk_record PRIMARY KEY (for_date, registered_resource, psr_mrid)
+            PRIMARY KEY (for_date, registered_resource, psr_mrid)
         )
         --END STATEMENT--
     """
-    with mysql_db as db:
+    with postgres_db as db:
         db.execute_statements(stmt_create_table)
         db.write_dataframe(df, "entsoe", "entsoe_generation_by_unit")
 
@@ -356,9 +362,11 @@ def entsoe_crossborder_flows_raw(
     region = context.partition_key.keys_by_dimension["region"]
 
     start_date, end_date = _get_date_window(for_date)
-    output_path = fs.get_writer(
+    writer = fs.get_writer(
         f"entsoe/cross_border_flows/{start_date.strftime('%Y%m%d')}/{region}"
-    ).base_path
+    )
+    writer.delete_data()
+    output_path = writer.base_path
     scraper = entsoe.FileWritingEntsoeScraper(
         api_key=api_key, output_dir=output_path
     ).set_dates(start_date, end_date)
@@ -381,10 +389,10 @@ def entsoe_crossborder_flows_raw(
         }
     ),
     group_name=ASSET_GROUP,
-    tags={"storage": "mysql"},
+    tags={"storage": "postgres"},
 )
 def entsoe_crossborder_flows(
-    context: dagster.AssetExecutionContext, fs: FilesystemResource, mysql: MySqlResource
+    context: dagster.AssetExecutionContext, fs: FilesystemResource, postgres: PostgresResource
 ):
     for_date = context.partition_key.keys_by_dimension["date"]
     region = context.partition_key.keys_by_dimension["region"]
@@ -393,23 +401,23 @@ def entsoe_crossborder_flows(
     ).base_path
     parser = entsoe.EntsoeFileParser(folder_path)
     df = parser.parse_files()
-    mysql_db = mysql.get_db_connection()
+    postgres_db = postgres.get_db_connection()
     stmt_create_table = """
-        CREATE DATABASE IF NOT EXISTS entsoe
+        CREATE SCHEMA IF NOT EXISTS entsoe
         --END STATEMENT--
 
         CREATE TABLE IF NOT EXISTS entsoe.entsoe_crossborder_flows (
-            for_date TIMESTAMP,
+            for_date VARCHAR(255),
             value FLOAT,
             unit VARCHAR(255),
             in_domain VARCHAR(255),
             out_domain VARCHAR(255),
             doc_type VARCHAR(255),
-            CONSTRAINT pk_record PRIMARY KEY (for_date, in_domain, out_domain)
+            PRIMARY KEY (for_date, in_domain, out_domain)
         )
         --END STATEMENT--
     """
-    with mysql_db as db:
+    with postgres_db as db:
         db.execute_statements(stmt_create_table)
         db.write_dataframe(df, "entsoe", "entsoe_crossborder_flows")
 

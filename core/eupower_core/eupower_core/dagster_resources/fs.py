@@ -63,7 +63,8 @@ class FsWriter(FsBase):
                 file.write(content)
 
     def delete_data(self):
-        shutil.rmtree(self.base_path)
+        if os.path.exists(self.base_path):
+            shutil.rmtree(self.base_path)
 
 
 class FsReader(FsBase):

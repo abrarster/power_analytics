@@ -1,6 +1,11 @@
 import warnings
 import dagster
-from eupower_core.dagster_resources import FilesystemResource, MySqlResource
+from eupower_core.dagster_resources import (
+    FilesystemResource,
+    MySqlResource,
+    PostgresResource,
+    DuckDBtoPostgresResource,
+)
 from . import assets, mapping_tables
 from . import jobs
 
@@ -12,6 +17,12 @@ RESOURCES = {
     "mysql": MySqlResource(
         mysql_user=dagster.EnvVar("MYSQL_USER"),
         mysql_password=dagster.EnvVar("MYSQL_PWD"),
+    ),
+    "postgres": PostgresResource(
+        user=dagster.EnvVar("POSTGRES_USER"), password=dagster.EnvVar("POSTGRES_PWD")
+    ),
+    "duckdb_postgres": DuckDBtoPostgresResource(
+        user=dagster.EnvVar("POSTGRES_USER"), password=dagster.EnvVar("POSTGRES_PWD")
     ),
 }
 

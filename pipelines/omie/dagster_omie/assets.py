@@ -13,6 +13,9 @@ from eupower_core.dagster_resources import (
     FilesystemResource,
     DuckDBtoMySqlResource,
     MySqlResource,
+    DuckDBtoPostgresResource,
+    PostgresResource,
+    mysql,
 )
 from eupower_core.dagster_resources.fs import FsReader
 from eupower_core.scrapes.redelectrica.esios import (
@@ -207,8 +210,10 @@ class EsiosConfig(Config):
     )
 
 
-@asset(group_name=REDELECTRICA_ASSETS, tags={"storage": "mysql"})
-def esios_indicator_ids(context: AssetExecutionContext, mysql: MySqlResource) -> None:
+@asset(group_name=REDELECTRICA_ASSETS, tags={"storage": "postgres"})
+def esios_indicator_ids(
+    context: AssetExecutionContext, postgres: PostgresResource
+) -> None:
     api_key = EnvVar("ESIOS_API_KEY").get_value()
     session = requests.Session()
     headers = make_headers(api_key)
@@ -216,8 +221,8 @@ def esios_indicator_ids(context: AssetExecutionContext, mysql: MySqlResource) ->
     indicators = indicators.rename(columns={"name": "long_name", "id": "indicator_id"})[
         ["indicator_id", "short_name", "long_name", "description"]
     ]
-    mysql_db = mysql.get_db_connection()
-    with mysql_db as db:
+    postgres_db = postgres.get_db_connection()
+    with postgres_db as db:
         db.write_dataframe(
             indicators, "redelectrica", "esios_indicator_ids", upsert=False
         )
@@ -264,34 +269,42 @@ def esios_indicators_staging(
 @asset(
     deps=["esios_indicators_staging"],
     group_name=REDELECTRICA_ASSETS,
-    tags={"storage": "mysql"},
+    tags={"storage": "postgres"},
 )
 def esios_indicators(
-    context: AssetExecutionContext, fs: FilesystemResource, mysql: MySqlResource
+    context: AssetExecutionContext, fs: FilesystemResource, postgres: PostgresResource
 ) -> None:
     reader = fs.get_reader("redelectrica/esios/raw")
     files = reader.list_files()
-    mysql_db = mysql.get_db_connection()
+    postgres_db = postgres.get_db_connection()
     stmt_create_table = """
         CREATE TABLE IF NOT EXISTS redelectrica.esios_indicators (
             indicator_id INT,
             short_name VARCHAR(255),
             geo_id BIGINT,
             geo_name VARCHAR(255),
-            for_date TIMESTAMP,
-            for_date_cet TIMESTAMP,
+            for_date VARCHAR(255),
+            for_date_cet VARCHAR(255),
             value FLOAT,
             composited BOOL,
             step_type VARCHAR(255),
             disaggregated BOOL,
-            values_updated_at TIMESTAMP,
-            constraint pk_entry PRIMARY KEY (indicator_id, geo_id,for_date)
+            values_updated_at VARCHAR(255),
+            PRIMARY KEY (indicator_id, geo_id, for_date)
         )
     """
-    with mysql_db as db:
+    with postgres_db as db:
         db.execute_statements(stmt_create_table)
         for file in files:
-            df = pd.read_csv(f"{reader.base_path}/{file}", index_col=False)
+            df = (
+                pd.read_csv(f"{reader.base_path}/{file}", index_col=False)
+                .astype(
+                    {"for_date": str, "for_date_cet": str, "values_updated_at": str}
+                )
+                .drop_duplicates(
+                    subset=["for_date", "geo_id", "indicator_id"], keep="last"
+                )
+            )
             db.write_dataframe(df, "redelectrica", "esios_indicators", upsert=True)
 
 

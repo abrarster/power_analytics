@@ -75,7 +75,7 @@ def parse_entsoe_generation(xml_string) -> pd.DataFrame:
     )
 
     # Sort by timestamp
-    df = df.sort_values("for_date").reset_index(drop=True)
+    df = df.sort_values("for_date").reset_index(drop=True).astype({"for_date": str})
     return df
 
 
@@ -157,7 +157,7 @@ def parse_entsoe_load(xml_string) -> pd.DataFrame:
                 "curveType": "curve_type",
             }
         )
-    )
+    ).astype({"for_date": str})
 
     return df
 
@@ -234,7 +234,7 @@ def parse_entsoe_cross_border_flows(xml_string):
     df = pd.DataFrame(data)
 
     # Sort by timestamp
-    df = df.sort_values("for_date").reset_index(drop=True)
+    df = df.sort_values("for_date").reset_index(drop=True).astype({"for_date": str})
 
     return df
 
@@ -312,4 +312,9 @@ def parse_entsoe_generation_by_unit(xml_string):
         print("No data found in XML!")
         return None
 
-    return pd.DataFrame(data).sort_values("for_date").reset_index(drop=True)
+    return (
+        pd.DataFrame(data)
+        .sort_values("for_date")
+        .reset_index(drop=True)
+        .astype({"for_date": str})
+    )
