@@ -211,8 +211,20 @@ class PostgresDb(BaseDb):
                 --END STATEMENT--
             """
             print(stmt_replace)
-            self.execute_statements(stmt_replace)
-            self.execute_statements(stmt_drop_temp_table)
+            try:
+                self.execute_statements(stmt_replace)
+            except Exception as e:
+                # Store the original error to re-raise later
+                original_error = e
+                try:
+                    self.execute_statements(stmt_drop_temp_table)
+                except Exception:
+                    # If dropping fails, log it or handle it, but still raise the original error
+                    pass
+                raise original_error
+            else:
+                # Only runs if stmt_replace succeeds
+                self.execute_statements(stmt_drop_temp_table)
 
     def _get_primary_key_columns(self, database_name: str, table_name: str) -> list[str]:
         query = """
