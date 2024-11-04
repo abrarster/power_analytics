@@ -7,10 +7,12 @@ from time import sleep
 from entsoe.exceptions import NoMatchingDataError, InvalidPSRTypeError
 from eupower_core.scrapes import entsoe
 from eupower_core.dagster_resources import FilesystemResource, MySqlResource
+from .constants import ASSET_GROUP
+from .mapping_tables import entsoe_areas, entsoe_psr_types
 
 warnings.filterwarnings("ignore", category=dagster.ExperimentalWarning)
 
-ASSET_GROUP = "entsoe"
+
 country_codes = {
     "generation_by_fuel": ("FR", "DE_LU", "ES"),
     "generation_by_unit": (
@@ -71,7 +73,7 @@ def entsoe_generation_by_fuel_raw(
 
 
 @dagster.asset(
-    deps=["entsoe_generation_by_fuel_raw"],
+    deps=[entsoe_generation_by_fuel_raw],
     partitions_def=dagster.MultiPartitionsDefinition(
         {
             "date": dagster.DailyPartitionsDefinition(start_date="2024-01-01"),
@@ -113,6 +115,50 @@ def entsoe_generation_by_fuel(
     with mysql_db as db:
         db.execute_statements(stmt_create_table)
         db.write_dataframe(df, "entsoe", "entsoe_generation_by_fuel")
+
+
+@dagster.asset(
+    deps=[entsoe_generation_by_fuel, entsoe_areas, entsoe_psr_types],
+    group_name=ASSET_GROUP,
+    tags={"storage": "mysql"},
+)
+def fct_entsoe_generation_by_fuel(
+    context: dagster.AssetExecutionContext, mysql: MySqlResource
+):
+    stmt = """
+        CREATE DATABASE IF NOT EXISTS entsoe
+        --END STATEMENT--
+
+        CREATE TABLE IF NOT EXISTS entsoe.fct_entsoe_generation_by_fuel (
+            bidding_zone_code VARCHAR(255),
+            psr_type VARCHAR(10),
+            bidding_zone VARCHAR(10),
+            fuel VARCHAR(255),
+            flow_type VARCHAR(255),
+            for_date TIMESTAMP,
+            generation_mw FLOAT,
+            CONSTRAINT pk_record PRIMARY KEY (bidding_zone_code, psr_type, flow_type, for_date)
+        )
+        --END STATEMENT--
+
+        TRUNCATE TABLE entsoe.fct_entsoe_generation_by_fuel
+        --END STATEMENT--
+
+        INSERT INTO entsoe.fct_entsoe_generation_by_fuel
+        SELECT a.bidding_zone as bidding_zone_code,
+               a.psr_type,
+               b.name as bidding_zone,
+               c.long_name as fuel,
+               a.flow_type,
+               a.for_date,
+               CASE flow_type WHEN 'generation' THEN 1 ELSE -1 END * generation_mw as generation_mw
+        FROM entsoe.entsoe_generation_by_fuel a
+        INNER JOIN entsoe.entsoe_areas b on a.bidding_zone = b.code
+        INNER JOIN entsoe.psr_types c on a.psr_type = c.fuel_code
+        --END STATEMENT--
+    """
+    with mysql.get_db_connection() as db:
+        db.execute_statements(stmt)
 
 
 @dagster.asset(

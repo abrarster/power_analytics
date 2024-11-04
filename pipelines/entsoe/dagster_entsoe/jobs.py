@@ -5,7 +5,9 @@ from dagster_entsoe import assets, mapping_tables
 job_gen_by_fuel = dagster.define_asset_job(
     "Scrape_gen_by_fuel",
     selection=dagster.AssetSelection.assets(
-        assets.entsoe_generation_by_fuel_raw, assets.entsoe_generation_by_fuel
+        assets.entsoe_generation_by_fuel_raw,
+        assets.entsoe_generation_by_fuel,
+        assets.fct_entsoe_generation_by_fuel,
     ),
 )
 
