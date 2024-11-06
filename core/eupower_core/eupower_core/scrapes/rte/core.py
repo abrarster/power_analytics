@@ -195,15 +195,6 @@ def query_generation_mix_15min(
 
     response = json.loads(response.content)["generation_mix_15min_time_scale"]
     response = pd.concat([_parse_response(x) for x in response], ignore_index=True)
-    response = (
-        response.assign(start_date=lambda x: pd.to_datetime(x.start_date))
-        .rename(columns={"value": "mw"})
-        .set_index("start_date")
-        .groupby(["production_type", "production_subtype"])
-        .resample("H")
-        .mw.mean()
-        .reset_index()
-    )
     return response
 
 

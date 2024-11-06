@@ -326,10 +326,12 @@ def rte_generation_byfuel_15min(
     with postgres_db as db:
         stmt_create_table = f"""
             CREATE TABLE IF NOT EXISTS {MYSQL_SCHEMA}.generation_by_fuel_15min (
+                start_date VARCHAR(255),
+                end_date VARCHAR(255),
+                updated_date VARCHAR(255),
+                value DOUBLE PRECISION,
                 production_type VARCHAR(255),
                 production_subtype VARCHAR(255),
-                start_date TIMESTAMP,
-                mw FLOAT,
                 PRIMARY KEY (production_type, production_subtype, start_date)
             )
         """
