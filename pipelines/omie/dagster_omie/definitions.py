@@ -13,10 +13,8 @@ from .jobs import job_omie, job_redelectrica
 warnings.filterwarnings("ignore", category=ExperimentalWarning)
 
 # Resource setup
-
-FS_CONFIG = {"root_folder": EnvVar("FSRESOURCE_ROOT")}
 RESOURCES = {
-    "fs": FilesystemResource(**FS_CONFIG),
+    "fs": FilesystemResource(root_folder=EnvVar("FSRESOURCE_ROOT")),
     "duckdb_mysql": DuckDBtoMySqlResource(
         mysql_user=EnvVar("MYSQL_USER"), mysql_password=EnvVar("MYSQL_PWD")
     ),

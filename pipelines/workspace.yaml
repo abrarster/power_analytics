@@ -2,3 +2,4 @@ load_from:
   - python_module: dagster_omie.definitions
   - python_module: dagster_rte.definitions
   - python_module: dagster_entsoe.definitions
+  - python_module: dagster_power_modelling.definitions
