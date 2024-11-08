@@ -4,9 +4,14 @@ import requests
 import warnings
 from datetime import date, datetime
 from time import sleep
+from entsoe.mappings import Area
 from entsoe.exceptions import NoMatchingDataError, InvalidPSRTypeError
 from eupower_core.scrapes import entsoe
-from eupower_core.dagster_resources import FilesystemResource, MySqlResource, PostgresResource
+from eupower_core.dagster_resources import (
+    FilesystemResource,
+    MySqlResource,
+    PostgresResource,
+)
 from .constants import ASSET_GROUP
 from .mapping_tables import entsoe_areas, entsoe_psr_types
 
@@ -88,7 +93,9 @@ def entsoe_generation_by_fuel_raw(
     tags={"storage": "postgres"},
 )
 def entsoe_generation_by_fuel(
-    context: dagster.AssetExecutionContext, fs: FilesystemResource, postgres: PostgresResource
+    context: dagster.AssetExecutionContext,
+    fs: FilesystemResource,
+    postgres: PostgresResource,
 ):
     for_date = context.partition_key.keys_by_dimension["date"]
     region = context.partition_key.keys_by_dimension["region"]
@@ -179,9 +186,7 @@ def entsoe_demand_raw(context: dagster.AssetExecutionContext, fs: FilesystemReso
     region = context.partition_key.keys_by_dimension["region"]
 
     start_date, end_date = _get_date_window(for_date)
-    writer = fs.get_writer(
-        f"entsoe/demand/{start_date.strftime('%Y%m%d')}/{region}"
-    )
+    writer = fs.get_writer(f"entsoe/demand/{start_date.strftime('%Y%m%d')}/{region}")
     writer.delete_data()
     output_path = writer.base_path
     scraper = entsoe.FileWritingEntsoeScraper(
@@ -207,7 +212,9 @@ def entsoe_demand_raw(context: dagster.AssetExecutionContext, fs: FilesystemReso
     tags={"storage": "postgres"},
 )
 def entsoe_demand(
-    context: dagster.AssetExecutionContext, fs: FilesystemResource, postgres: PostgresResource
+    context: dagster.AssetExecutionContext,
+    fs: FilesystemResource,
+    postgres: PostgresResource,
 ):
     for_date = context.partition_key.keys_by_dimension["date"]
     region = context.partition_key.keys_by_dimension["region"]
@@ -237,6 +244,84 @@ def entsoe_demand(
     with postgres_db as db:
         db.execute_statements(stmt_create_table)
         db.write_dataframe(df, "entsoe", "entsoe_demand")
+
+
+@dagster.asset(
+    partitions_def=dagster.DailyPartitionsDefinition(start_date="2022-01-01"),
+    group_name=ASSET_GROUP,
+    tags={"storage": "filesystem", "scrape_source": "entsoe"},
+)
+def entsoe_production_units_raw(
+    context: dagster.AssetExecutionContext, fs: FilesystemResource
+):
+    as_of_date = pd.Timestamp(context.partition_time_window.start)
+    api_key = dagster.EnvVar("ENTSOE_API_KEY").get_value()
+    writer = fs.get_writer(f'entsoe/production_units/{as_of_date.strftime("%Y%m%d")}')
+    writer.delete_data()
+    scraper = entsoe.FileWritingEntsoeScraper(
+        api_key=api_key, output_dir=writer.base_path
+    ).set_dates(as_of_date, as_of_date)
+    for area in Area:
+        try:
+            scraper.get_units(area.name, as_of_date)
+        except NoMatchingDataError:
+            context.log.warning(f"No data for {area.name}")
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 400:
+                context.log.warning(f"HTTP 400 client error for {area.name}")
+            else:
+                raise
+
+
+@dagster.asset(
+    deps=["entsoe_production_units_raw"],
+    partitions_def=dagster.DailyPartitionsDefinition(start_date="2022-01-01"),
+    group_name=ASSET_GROUP,
+    tags={"storage": "postgres"},
+)
+def entsoe_production_units(
+    context: dagster.AssetExecutionContext,
+    fs: FilesystemResource,
+    postgres: PostgresResource,
+):
+    as_of_date = pd.Timestamp(context.partition_time_window.start)
+    reader = fs.get_reader(f'entsoe/production_units/{as_of_date.strftime("%Y%m%d")}')
+    parser = entsoe.EntsoeFileParser(reader.base_path)
+    df = parser.parse_by_type("A95")
+    df = df.drop_duplicates(subset=["resource_mRID"], keep="first").reset_index(
+        drop=True
+    )
+    stmt_create_table = """
+        CREATE SCHEMA IF NOT EXISTS entsoe
+        --END STATEMENT--
+
+        CREATE TABLE IF NOT EXISTS entsoe.entsoe_production_units (
+            mrid VARCHAR(255) NOT NULL,
+            business_type VARCHAR(255) NOT NULL,
+            implementation_date TIMESTAMP NOT NULL,
+            resource_name VARCHAR(255) NOT NULL,
+            resource_mrid VARCHAR(255) NOT NULL,
+            location VARCHAR(255) NOT NULL,
+            bidding_zone VARCHAR(255) NOT NULL,
+            provider_participant VARCHAR(255) NOT NULL,
+            control_area_domain VARCHAR(255) NOT NULL,
+            psr_type VARCHAR(255) NOT NULL,
+            voltage_limit DOUBLE PRECISION NOT NULL,
+            voltage_unit VARCHAR(255) NOT NULL,
+            nominal_power DOUBLE PRECISION NOT NULL,
+            power_unit VARCHAR(255) NOT NULL,
+            unit_count DOUBLE PRECISION,
+            total_unit_power DOUBLE PRECISION,
+            unit_names JSONB,
+            unit_details JSONB,
+            PRIMARY KEY (resource_mrid, implementation_date)
+        )
+        --END STATEMENT--
+    """
+    postgres_db = postgres.get_db_connection()
+    with postgres_db as db:
+        db.execute_statements(stmt_create_table)
+        db.write_dataframe_incremental(df, "entsoe", "entsoe_production_units")
 
 
 @dagster.asset(
@@ -309,7 +394,9 @@ def entsoe_generation_by_unit_raw(
     tags={"storage": "postgres"},
 )
 def entsoe_generation_by_unit(
-    context: dagster.AssetExecutionContext, fs: FilesystemResource, postgres: PostgresResource
+    context: dagster.AssetExecutionContext,
+    fs: FilesystemResource,
+    postgres: PostgresResource,
 ):
     for_date = context.partition_key.keys_by_dimension["date"]
     region = context.partition_key.keys_by_dimension["region"]
@@ -392,7 +479,9 @@ def entsoe_crossborder_flows_raw(
     tags={"storage": "postgres"},
 )
 def entsoe_crossborder_flows(
-    context: dagster.AssetExecutionContext, fs: FilesystemResource, postgres: PostgresResource
+    context: dagster.AssetExecutionContext,
+    fs: FilesystemResource,
+    postgres: PostgresResource,
 ):
     for_date = context.partition_key.keys_by_dimension["date"]
     region = context.partition_key.keys_by_dimension["region"]

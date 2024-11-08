@@ -8,10 +8,10 @@ import logging
 from requests.exceptions import ConnectionError
 from entsoe import EntsoeRawClient
 from entsoe.exceptions import NoMatchingDataError
-from entsoe.mappings import PSRTYPE_MAPPINGS, NEIGHBOURS
+from entsoe.mappings import PSRTYPE_MAPPINGS, NEIGHBOURS, lookup_area
 from pathlib import Path
 from functools import wraps
-from typing import Callable, Union, List
+from typing import Callable, Union, Optional
 from . import xml_parsers
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -158,6 +158,22 @@ class EntsoeScraper:
                     continue
         return results
 
+    def get_units(
+        self, country_code: str, as_of_date: Optional[pd.Timestamp] = None
+    ) -> dict[str, str]:
+        if as_of_date is None:
+            as_of_date = pd.Timestamp.today()
+
+        params = {
+            "documentType": "A95",
+            "businessType": "B11",
+            "Implementation_DateAndOrTime": as_of_date.strftime("%Y-%m-%d"),
+            "BiddingZone_Domain": lookup_area(country_code).code,
+        }
+        response = self.client._base_request(params=params, start=as_of_date, end=as_of_date)
+        response_xml = response.text
+        return {f"A95_{country_code}": response_xml}
+
 
 def writes_to_files(cls):
     """Class decorator that adds file writing capability to EntsoeScraper methods"""
@@ -254,6 +270,7 @@ class EntsoeFileParser:
         "A73": xml_parsers.parse_entsoe_generation_by_unit,
         "A65": xml_parsers.parse_entsoe_load,
         "A88": xml_parsers.parse_entsoe_cross_border_flows,
+        "A95": xml_parsers.parse_power_plants,
     }
 
     def __init__(self, input_dir: Union[str, Path]):

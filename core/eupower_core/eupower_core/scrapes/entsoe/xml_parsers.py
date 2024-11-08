@@ -318,3 +318,125 @@ def parse_entsoe_generation_by_unit(xml_string):
         .reset_index(drop=True)
         .astype({"for_date": str})
     )
+
+
+def parse_power_plants(xml_string):
+    """
+    Parse power plant XML data into a pandas DataFrame
+
+    Args:
+        xml_string (str): XML string containing power plant data
+
+    Returns:
+        pd.DataFrame: DataFrame containing parsed power plant information
+    """
+    # Parse XML
+    root = ET.fromstring(xml_string)
+
+    # Get namespace
+    ns = {"ns": root.tag.split("}")[0].strip("{")} if "}" in root.tag else None
+
+    # Define namespace path prefix if namespace exists
+    ns_path = "ns:" if ns else ""
+
+    # List to store data
+    plants = []
+
+    # Iterate through TimeSeries elements
+    for ts in root.findall(f".//{ns_path}TimeSeries", ns):
+        try:
+            # Extract provider participant info
+            provider_elem = ts.find(f"{ns_path}Provider_MarketParticipant", ns)
+            provider_mrid = (
+                provider_elem.find(f"{ns_path}mRID", ns)
+                if provider_elem is not None
+                else None
+            )
+
+            # Extract base plant info
+            plant = {
+                "mRID": ts.find(f"{ns_path}mRID", ns).text,
+                "business_type": ts.find(f"{ns_path}businessType", ns).text,
+                "implementation_date": ts.find(
+                    f"{ns_path}implementation_DateAndOrTime.date", ns
+                ).text,
+                "resource_name": ts.find(f"{ns_path}registeredResource.name", ns).text,
+                "resource_mRID": ts.find(f"{ns_path}registeredResource.mRID", ns).text,
+                "location": ts.find(
+                    f"{ns_path}registeredResource.location.name", ns
+                ).text,
+                "bidding_zone": ts.find(f"{ns_path}biddingZone_Domain.mRID", ns).text,
+                "provider_participant": (
+                    provider_mrid.text if provider_mrid is not None else None
+                ),
+                "control_area_domain": ts.find(
+                    f"{ns_path}ControlArea_Domain/{ns_path}mRID", ns
+                ).text,
+            }
+
+            # Get MktPSRType info
+            mkt_psr = ts.find(f"{ns_path}MktPSRType", ns)
+            if mkt_psr is not None:
+                plant["psr_type"] = mkt_psr.find(f"{ns_path}psrType", ns).text
+
+                # Get voltage limit
+                voltage_elem = mkt_psr.find(
+                    f"{ns_path}production_PowerSystemResources.highVoltageLimit", ns
+                )
+                if voltage_elem is not None:
+                    plant["voltage_limit"] = float(voltage_elem.text)
+                    plant["voltage_unit"] = voltage_elem.get("unit")
+
+                # Get nominal power
+                power_elem = mkt_psr.find(
+                    f"{ns_path}nominalIP_PowerSystemResources.nominalP", ns
+                )
+                if power_elem is not None:
+                    plant["nominal_power"] = float(power_elem.text)
+                    plant["power_unit"] = power_elem.get("unit")
+
+                # Get generating units
+                gen_units = mkt_psr.findall(
+                    f"{ns_path}GeneratingUnit_PowerSystemResources", ns
+                )
+                if gen_units:
+                    # Extract unit information
+                    units = []
+                    for unit in gen_units:
+                        units.append(
+                            {
+                                "name": unit.find(f"{ns_path}name", ns).text,
+                                "mRID": unit.find(f"{ns_path}mRID", ns).get(
+                                    "codingScheme"
+                                ),
+                                "nominal_power": float(
+                                    unit.find(f"{ns_path}nominalP", ns).text
+                                ),
+                                "power_unit": unit.find(f"{ns_path}nominalP", ns).get(
+                                    "unit"
+                                ),
+                                "psr_type": unit.find(
+                                    f"{ns_path}generatingUnit_PSRType.psrType", ns
+                                ).text,
+                            }
+                        )
+
+                    plant["unit_count"] = len(units)
+                    plant["total_unit_power"] = sum(u["nominal_power"] for u in units)
+                    plant["unit_names"] = [u["name"] for u in units]
+                    plant["unit_details"] = units
+
+            plants.append(plant)
+
+        except Exception as e:
+            print(f"Error processing TimeSeries: {e}")
+            continue
+
+    # Create DataFrame
+    df = pd.DataFrame(plants)
+
+    # Convert date column
+    if not df.empty and "implementation_date" in df.columns:
+        df["implementation_date"] = pd.to_datetime(df["implementation_date"])
+
+    return df
