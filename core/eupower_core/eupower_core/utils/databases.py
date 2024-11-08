@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 import random
 import string
 import pandas as pd
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
+from sqlalchemy.types import JSON
 from time import sleep
 
 
@@ -110,8 +112,6 @@ class MySqlDb(BaseDb):
         self.conn = self.engine.connect()
         return self
 
-    
-
     def write_dataframe(
         self, df: pd.DataFrame, database_name: str, table_name: str, upsert: bool = True
     ) -> None:
@@ -164,7 +164,7 @@ class PostgresDb(BaseDb):
     def query_to_dataframe(self, query: str) -> pd.DataFrame:
         with self.engine.connect() as conn:
             return pd.read_sql(query, conn)
-        
+
     def write_dataframe(
         self, df: pd.DataFrame, database_name: str, table_name: str, upsert: bool = True
     ) -> None:
@@ -194,7 +194,9 @@ class PostgresDb(BaseDb):
 
             # Get primary key info and non-pk columns
             pk_columns = self._get_primary_key_columns(database_name, table_name)
-            non_pk_columns = self._get_non_pk_columns(database_name, table_name, pk_columns)
+            non_pk_columns = self._get_non_pk_columns(
+                database_name, table_name, pk_columns
+            )
             update_clause = ", ".join(
                 f"{col} = EXCLUDED.{col}" for col in non_pk_columns
             )
@@ -226,7 +228,74 @@ class PostgresDb(BaseDb):
                 # Only runs if stmt_replace succeeds
                 self.execute_statements(stmt_drop_temp_table)
 
-    def _get_primary_key_columns(self, database_name: str, table_name: str) -> list[str]:
+    def write_dataframe_incremental(
+        self, df: pd.DataFrame, database_name: str, table_name: str
+    ) -> None:
+        # Create a copy of the dataframe and clean column names
+        df_copy = df.copy()
+        df_copy.columns = df_copy.columns.str.lower().str.replace(" ", "_")
+
+        # Get column types from the target table
+        column_types = self._get_column_types(database_name, table_name)
+        json_columns = {k: JSON for k, v in column_types.items() if v == "jsonb"}
+
+        # Create temp table and load data
+        temp_table_name = f"{table_name}_{generate_random_string()}"
+        stmt_create_temp_table = self.stmt_create_table_like.format(
+            database_name=database_name,
+            temp_table_name=temp_table_name,
+            table_name=table_name,
+        )
+        self.execute_statements(stmt_create_temp_table)
+
+        # Write all data to temp table
+        df_copy.to_sql(
+            temp_table_name,
+            self.conn,
+            schema=database_name,
+            if_exists="replace",
+            index=False,
+            dtype=json_columns,
+        )
+
+        # Get primary key info
+        pk_columns = self._get_primary_key_columns(database_name, table_name)
+
+        # Insert only records that don't exist in the target table with proper casting
+        stmt_insert = f"""
+            INSERT INTO {database_name}.{table_name}
+            SELECT * 
+            FROM {database_name}."{temp_table_name}" t
+            WHERE NOT EXISTS (
+                SELECT 1 
+                FROM {database_name}.{table_name} e 
+                WHERE {' AND '.join(f'e.{pk} = t.{pk}' for pk in pk_columns)}
+            )
+            --END STATEMENT--
+        """
+
+        stmt_drop_temp_table = f"""
+            DROP TABLE {database_name}.{temp_table_name}
+            --END STATEMENT--
+        """
+        try:
+            self.execute_statements(stmt_insert)
+        except Exception as e:
+            # Store the original error to re-raise later
+            original_error = e
+            try:
+                self.execute_statements(stmt_drop_temp_table)
+            except Exception:
+                # If dropping fails, log it or handle it, but still raise the original error
+                pass
+            raise original_error
+        else:
+            # Only runs if stmt_insert succeeds
+            self.execute_statements(stmt_drop_temp_table)
+
+    def _get_primary_key_columns(
+        self, database_name: str, table_name: str
+    ) -> list[str]:
         query = """
             SELECT array_agg(kcu.column_name::text) as key_columns
             FROM information_schema.table_constraints tc
@@ -241,14 +310,17 @@ class PostgresDb(BaseDb):
         """
         with self.engine.connect() as connection:
             result = connection.execute(
-                text(query),
-                {"schema": database_name, "table": table_name}
+                text(query), {"schema": database_name, "table": table_name}
             ).fetchone()
             if result is None:
-                raise ValueError(f"No primary key found for table {database_name}.{table_name}")
+                raise ValueError(
+                    f"No primary key found for table {database_name}.{table_name}"
+                )
             return result[0]
-    
-    def _get_non_pk_columns(self, database_name: str, table_name: str, pk_columns: list[str]) -> list[str]:
+
+    def _get_non_pk_columns(
+        self, database_name: str, table_name: str, pk_columns: list[str]
+    ) -> list[str]:
         query = """
             SELECT column_name 
             FROM information_schema.columns 
@@ -258,11 +330,28 @@ class PostgresDb(BaseDb):
         """
         with self.engine.connect() as connection:
             result = connection.execute(
-                text(query), 
+                text(query),
                 {
-                    "schema": database_name, 
+                    "schema": database_name,
                     "table": table_name,
-                    "pk_columns": pk_columns
-                }
+                    "pk_columns": pk_columns,
+                },
             )
             return [row[0] for row in result]
+
+    def _get_column_types(self, database_name: str, table_name: str) -> dict:
+        query = """
+            SELECT column_name, data_type 
+            FROM information_schema.columns 
+            WHERE table_schema = :schema 
+            AND table_name = :table
+        """
+        with self.engine.connect() as connection:
+            result = connection.execute(
+                text(query),
+                {
+                    "schema": database_name,
+                    "table": table_name,
+                },
+            )
+            return {row[0]: row[1] for row in result}
