@@ -403,12 +403,12 @@ def parse_power_plants(xml_string):
                     # Extract unit information
                     units = []
                     for unit in gen_units:
+                        unit_mrid_elem = unit.find(f"{ns_path}mRID", ns)
                         units.append(
                             {
                                 "name": unit.find(f"{ns_path}name", ns).text,
-                                "mRID": unit.find(f"{ns_path}mRID", ns).get(
-                                    "codingScheme"
-                                ),
+                                "mRID": unit_mrid_elem.text if unit_mrid_elem is not None else None,
+                                "mRID_coding_scheme": unit_mrid_elem.get("codingScheme") if unit_mrid_elem is not None else None,
                                 "nominal_power": float(
                                     unit.find(f"{ns_path}nominalP", ns).text
                                 ),

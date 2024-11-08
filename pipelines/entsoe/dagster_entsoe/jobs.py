@@ -43,3 +43,10 @@ job_mapping_tables = dagster.define_asset_job(
         mapping_tables.entsoe_process_types,
     ),
 )
+
+job_production_units = dagster.define_asset_job(
+    "Scrape_production_units",
+    selection=dagster.AssetSelection.assets(
+        assets.entsoe_production_units_raw, assets.entsoe_production_units
+    ),
+)

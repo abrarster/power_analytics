@@ -36,5 +36,6 @@ defs = dagster.Definitions(
         jobs.job_demand,
         jobs.job_crossborder_flows,
         jobs.job_mapping_tables,
+        jobs.job_production_units,
     ],
 )
