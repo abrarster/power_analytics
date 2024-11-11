@@ -7,7 +7,7 @@ import tenacity
 import logging
 from requests.exceptions import ConnectionError
 from entsoe import EntsoeRawClient
-from entsoe.exceptions import NoMatchingDataError
+from entsoe.exceptions import NoMatchingDataError, InvalidBusinessParameterError
 from entsoe.mappings import PSRTYPE_MAPPINGS, NEIGHBOURS, lookup_area
 from pathlib import Path
 from functools import wraps
@@ -154,6 +154,11 @@ class EntsoeScraper:
                 except NoMatchingDataError:
                     logger.warning(
                         f"No matching data for {country_code} to {neighbour} from {start_date} to {end_date}"
+                    )
+                    continue
+                except InvalidBusinessParameterError:
+                    logger.warning(
+                        f"Invalid business parameter for {country_code} to {neighbour} from {start_date} to {end_date}"
                     )
                     continue
         return results
