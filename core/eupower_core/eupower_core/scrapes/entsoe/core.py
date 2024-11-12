@@ -132,9 +132,13 @@ class EntsoeScraper:
             ] = response
         return results
 
-    def query_crossborder_flows(self, country_code: str) -> dict[str, str]:
+    def query_crossborder_flows(
+        self, country_code: str, logger_instance: Optional[logging.Logger] = None
+    ) -> dict[str, str]:
         results = {}
         neighbours = NEIGHBOURS[country_code]
+        if logger_instance is None:
+            logger_instance = logger
         for neighbour in neighbours:
             if neighbour == "DE_AT_LU":
                 continue
@@ -152,12 +156,12 @@ class EntsoeScraper:
                         f"A88_{country_code}_{neighbour}_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}"
                     ] = response
                 except NoMatchingDataError:
-                    logger.warning(
+                    logger_instance.warning(
                         f"No matching data for {country_code} to {neighbour} from {start_date} to {end_date}"
                     )
                     continue
                 except InvalidBusinessParameterError:
-                    logger.warning(
+                    logger_instance.warning(
                         f"Invalid business parameter for {country_code} to {neighbour} from {start_date} to {end_date}"
                     )
                     continue
