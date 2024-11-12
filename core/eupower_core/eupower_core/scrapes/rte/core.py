@@ -261,13 +261,14 @@ def query_realtime_consumption(
     )
     response.raise_for_status()
     response = json.loads(response.content)
-    return (
+    response = (
         pd.DataFrame.from_records(response["short_term"][0]["values"])
         .assign(data_type=data_type)[
             ["data_type", "updated_date", "start_date", "end_date", "value"]
         ]
         .sort_values("start_date")
     )
+    return response
 
 
 def query_physical_flows(
