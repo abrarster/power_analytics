@@ -16,12 +16,15 @@ class EliaTs(Enum):
     TOTAL_LOAD = "ods001"
     GRID_LOAD = "ods003"
     RT_LOAD = "ods002"
+    DA_GEN_BYFUEL_OLD = "ods034"
     DA_GEN_BYFUEL = "ods176"
+    RT_GEN_BYFUEL_OLD = "ods033"
     RT_GEN_BYFUEL = "ods177"
     AVAILABILITY_BYFUEL = "ods037"
     AVAILABILITY_BYUNIT = "ods038"
     INSTALLED_CAP_BYFUEL = "ods035"
-    INSTALLED_CAP_BYUNIT = "ods036"
+    INSTALLED_CAP_BYUNIT_OLD = "ods036"
+    INSTALLED_CAP_BYUNIT = "ods179"
     WIND_GENERATION_HIST = "ods031"
     WIND_GENERATION_RT = "ods086"
     SOLAR_GENERATION_HIST = "ods032"
@@ -33,11 +36,8 @@ class EliaTs(Enum):
 
     def exec_query(
         self, start: date, end: date, cert: Optional[str] = None
-    ) -> pd.DataFrame:
-        response = execute_ts_query(self.value, start, end, cert)
-        return pd.DataFrame.from_records(response).assign(
-            datetime=lambda x: pd.to_datetime(x.datetime)
-        )
+    ) -> requests.Response:
+        return execute_ts_query(self.value, start, end, cert)
 
 
 class EliaRemits(Enum):
@@ -70,7 +70,7 @@ def execute_ts_query(
     end: Optional[date] = None,
     cert: Optional[str] = None,
     **params,
-) -> list[dict] | dict:
+) -> requests.Response:
     session = requests.Session()
     session.verify = False if not cert else cert
     url = ROOT.format(series_id=series_id)
@@ -88,7 +88,7 @@ def execute_ts_query(
         params["where"] = where_clause
     response = session.get(url, params=params)
     response.raise_for_status()
-    return json.loads(response.content)
+    return response
 
 
 def execute_remit_query(
