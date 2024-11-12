@@ -17,9 +17,11 @@ from eupower_core.dagster_resources import (
     MySqlResource,
     DuckDBtoMySqlResource,
     PostgresResource,
-    DuckDBtoPostgresResource
+    DuckDBtoPostgresResource,
 )
 from eupower_core.scrapes import rte
+from psycopg.errors import CardinalityViolation
+from sqlalchemy.exc import ProgrammingError
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 warnings.simplefilter(action="ignore", category=FutureWarning)
@@ -60,7 +62,9 @@ def eco2mix_generation_raw(
 
 
 @asset(
-    deps=["eco2mix_generation_raw"], tags={"storage": "postgres"}, group_name=ASSETS_GROUP
+    deps=["eco2mix_generation_raw"],
+    tags={"storage": "postgres"},
+    group_name=ASSETS_GROUP,
 )
 def eco2mix_balances(
     context: AssetExecutionContext,
@@ -217,8 +221,17 @@ def eco2mix_balances(
         )
         --END STATEMENT--
 
+        /* TODO: This is a workaround to avoid the CardinalityViolation error.
+        Need to somehow log if we have duplicates because we shouldn't. Most likely
+        due to daylight saving time changes.
+        */
+        
         CREATE TABLE postgres_db.{schema}.eco2mix_balances_temp 
-        AS FROM memory.eco2mix_cleaned
+        AS FROM (
+            SELECT DISTINCT ON (perimeter, nature, for_date) *
+            FROM memory.eco2mix_cleaned
+            ORDER BY perimeter, nature, for_date, consumption NULLS LAST
+        )
         --END STATEMENT--
 
         CALL postgres_execute(
@@ -279,7 +292,9 @@ def eco2mix_balances(
 
 @asset(tags={"storage": "postgres"}, group_name=ASSETS_GROUP)
 def rte_generation_byunit(
-    context: AssetExecutionContext, postgres: PostgresResource, config: RteObservationConfig
+    context: AssetExecutionContext,
+    postgres: PostgresResource,
+    config: RteObservationConfig,
 ):
 
     rte_id = EnvVar("RTE_ID").get_value()
@@ -314,7 +329,9 @@ def rte_generation_byunit(
 
 @asset(tags={"storage": "postgres"}, group_name=ASSETS_GROUP)
 def rte_generation_byfuel_15min(
-    context: AssetExecutionContext, postgres: PostgresResource, config: RteObservationConfig
+    context: AssetExecutionContext,
+    postgres: PostgresResource,
+    config: RteObservationConfig,
 ):
     rte_id = EnvVar("RTE_ID").get_value()
     rte_secret = EnvVar("RTE_SECRET").get_value()
@@ -341,21 +358,45 @@ def rte_generation_byfuel_15min(
         for dt in date_range:
             try:
                 df = rte.query_generation_mix_15min(token_type, access_token, dt)
-                db.write_dataframe(df, MYSQL_SCHEMA, "generation_by_fuel_15min")
+                try:
+                    db.write_dataframe(df, MYSQL_SCHEMA, "generation_by_fuel_15min")
+                except ProgrammingError as e:
+                    if isinstance(e.orig, CardinalityViolation):
+                        with pd.option_context(
+                            "display.max_columns",
+                            None,
+                            "display.max_rows",
+                            None,
+                            "display.width",
+                            None,
+                        ):
+                            dup_rows = df[df.duplicated(
+                                subset=["production_type", "production_subtype", "start_date"], 
+                                keep=False
+                            )]
+                            context.log.warning(f"Duplicate rows:\n {dup_rows} \n Deduplicating")
+                            df_dedup = df.drop_duplicates(
+                                subset=["production_type", "production_subtype", "start_date"]
+                            )
+                            db.write_dataframe(df_dedup, MYSQL_SCHEMA, "generation_by_fuel_15min")
+                    else:
+                        # If it's not a CardinalityViolation, re-raise the exception
+                        raise
             except TypeError:
-                logger.warning(f"No data for {dt}")
+                context.log.warning(f"No data for {dt}")
                 continue
 
 
 @asset(tags={"storage": "postgres"}, group_name=ASSETS_GROUP)
 def rte_generation_byfuel(
-    context: AssetExecutionContext, postgres: PostgresResource, config: RteObservationConfig
+    context: AssetExecutionContext,
+    postgres: PostgresResource,
+    config: RteObservationConfig,
 ):
     rte_id = EnvVar("RTE_ID").get_value()
     rte_secret = EnvVar("RTE_SECRET").get_value()
     start_date = date.today() - timedelta(days=config.days_back)
     end_date = date.today() + timedelta(days=config.days_forward)
-
     postgres_db = postgres.get_db_connection()
     with postgres_db as db:
         stmt_create_table = f"""
@@ -370,13 +411,41 @@ def rte_generation_byfuel(
         """
         db.execute_statements(stmt_create_table)
         token_type, access_token = rte.get_token(rte_id, rte_secret)
-        df = rte.query_generation_bytype(token_type, access_token, start_date, end_date)
-        db.write_dataframe(df, MYSQL_SCHEMA, "generation_by_fuel")
+        for chunk_start, chunk_end in _chunk_date_range(start_date, end_date, 5):
+            context.log.info(f"Processing {chunk_start} to {chunk_end}")
+            df = rte.query_generation_bytype(
+                token_type, access_token, chunk_start, chunk_end
+            )
+            try:
+                db.write_dataframe(df, MYSQL_SCHEMA, "generation_by_fuel")
+            except ProgrammingError as e:
+                if isinstance(e.orig, CardinalityViolation):
+                    with pd.option_context(
+                        "display.max_columns",
+                        None,
+                        "display.max_rows",
+                        None,
+                        "display.width",
+                        None,
+                    ):
+                        dup_rows = df[df.duplicated(
+                            subset=["production_type", "start_date"], keep=False
+                        )]
+                        context.log.warning(f"Duplicate rows:\n {dup_rows} \n Deduplicating")
+                        df_dedup = df.drop_duplicates(
+                            subset=["production_type", "start_date"]
+                        )
+                        db.write_dataframe(df_dedup, MYSQL_SCHEMA, "generation_by_fuel")
+                else:
+                    raise
+                
 
 
 @asset(tags={"storage": "postgres"}, group_name=ASSETS_GROUP)
 def rte_realtime_consumption_raw(
-    context: AssetExecutionContext, postgres: PostgresResource, config: RteObservationConfig
+    context: AssetExecutionContext,
+    postgres: PostgresResource,
+    config: RteObservationConfig,
 ):
     rte_id = EnvVar("RTE_ID").get_value()
     rte_secret = EnvVar("RTE_SECRET").get_value()
@@ -397,15 +466,37 @@ def rte_realtime_consumption_raw(
         """
         db.execute_statements(stmt_create_table)
         token_type, access_token = rte.get_token(rte_id, rte_secret)
-        df = rte.query_realtime_consumption(
-            token_type, access_token, start_date, end_date, "observed"
-        )
-        db.write_dataframe(df, MYSQL_SCHEMA, "realtime_consumption_raw")
+        for chunk_start, chunk_end in _chunk_date_range(start_date, end_date, 5):
+            context.log.info(f"Processing {chunk_start} to {chunk_end}")
+            df = rte.query_realtime_consumption(
+                token_type, access_token, chunk_start, chunk_end, "observed"
+            )
+            try:
+                db.write_dataframe(df, MYSQL_SCHEMA, "realtime_consumption_raw")
+            except ProgrammingError as e:
+                if isinstance(e.orig, CardinalityViolation):
+                    # Set pandas display options to show all columns and rows
+                    with pd.option_context(
+                        "display.max_columns",
+                        None,
+                        "display.max_rows",
+                        None,
+                        "display.width",
+                        None,
+                    ):
+                        dup_rows = df[df.duplicated(subset=["start_date"], keep=False)]
+                        context.log.warning(f"Duplicate rows:\n {dup_rows} \n Deduplicating")
+                        df_dedup = df.drop_duplicates(subset=["start_date"])
+                        db.write_dataframe(df_dedup, MYSQL_SCHEMA, "realtime_consumption_raw")
+                else:
+                    raise
 
 
 @asset(tags={"storage": "postgres"}, group_name=ASSETS_GROUP)
 def rte_exchange_phys_flows(
-    context: AssetExecutionContext, postgres: PostgresResource, config: RteObservationConfig
+    context: AssetExecutionContext,
+    postgres: PostgresResource,
+    config: RteObservationConfig,
 ):
     rte_id = EnvVar("RTE_ID").get_value()
     rte_secret = EnvVar("RTE_SECRET").get_value()
@@ -434,3 +525,22 @@ def rte_exchange_phys_flows(
                 token_type, access_token, start_date, end_date, country
             )
             db.write_dataframe(df, MYSQL_SCHEMA, "exchange_phys_flows")
+
+
+def _chunk_date_range(start_date: date, end_date: date, n_days: int):
+    """
+    Generator that chunks a date range into windows of n_days.
+
+    Args:
+        start_date (date): Start date of the range
+        end_date (date): End date of the range
+        n_days (int): Number of days per chunk
+
+    Yields:
+        tuple: (chunk_start_date, chunk_end_date)
+    """
+    current_date = start_date
+    while current_date <= end_date:
+        chunk_end = min(current_date + timedelta(days=n_days - 1), end_date)
+        yield current_date, chunk_end
+        current_date = chunk_end + timedelta(days=1)
