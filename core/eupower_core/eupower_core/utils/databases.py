@@ -212,7 +212,6 @@ class PostgresDb(BaseDb):
                 DROP TABLE {database_name}.{temp_table_name}
                 --END STATEMENT--
             """
-            print(stmt_replace)
             try:
                 self.execute_statements(stmt_replace)
             except Exception as e:
