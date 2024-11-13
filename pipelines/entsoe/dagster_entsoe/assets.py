@@ -22,6 +22,10 @@ country_codes = {
     "generation_by_fuel": (
         "FR",
         "DE_LU",
+        "DE_50HZ",
+        "DE_TENNET",
+        "DE_AMPRION",
+        "DE_TRANSNET",
         "ES",
         "IT",
         "IT_CALA",
@@ -57,7 +61,6 @@ country_codes = {
         "AT",
         "PL",
         "HU",
-        "HR",
         "RO",
         "CZ",
     ),
@@ -216,7 +219,7 @@ def fct_entsoe_generation_by_fuel(
         CREATE TABLE IF NOT EXISTS entsoe.fct_entsoe_generation_by_fuel (
             bidding_zone_code VARCHAR(255),
             psr_type VARCHAR(10),
-            bidding_zone VARCHAR(10),
+            bidding_zone VARCHAR(100),
             fuel VARCHAR(255),
             flow_type VARCHAR(255),
             for_date VARCHAR(255),
@@ -533,7 +536,7 @@ def entsoe_crossborder_flows_raw(
         api_key=api_key, output_dir=output_path
     ).set_dates(start_date, end_date)
     try:
-        scraper.query_crossborder_flows(region)
+        scraper.query_crossborder_flows(region, context.log)
     except requests.exceptions.HTTPError:
         context.log.warning(f"HTTP error for {region} on {start_date}")
     except NoMatchingDataError:
