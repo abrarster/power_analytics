@@ -20,5 +20,10 @@ assets = dagster.load_assets_from_package_module(assets)
 defs = dagster.Definitions(
     assets=assets,
     resources=resources,
-    jobs=[jobs.elia_rt_history, jobs.elia_da_history],
+    jobs=[
+        jobs.elia_rt_history,
+        jobs.elia_da_history,
+        jobs.ren_history,
+        jobs.ren_capacity,
+    ],
 )

@@ -30,3 +30,20 @@ elia_da_history = dagster.define_asset_job(
         assets.elia.elia_itc_da_comex,
     ),
 )
+ren_history = dagster.define_asset_job(
+    "ren_history_scrape",
+    selection=dagster.AssetSelection.assets(
+        assets.ren.ren_power_balance_raw,
+        assets.ren.ren_water_balance_raw,
+        assets.ren.ren_hydro_production_raw,
+        assets.ren.ren_power_balance,
+        assets.ren.ren_water_balance,
+        assets.ren.ren_hydro_production,
+    ),
+)
+ren_capacity = dagster.define_asset_job(
+    "ren_capacity_scrape",
+    selection=dagster.AssetSelection.assets(
+        assets.ren.ren_capacities_raw, assets.ren.ren_capacities
+    ),
+)
