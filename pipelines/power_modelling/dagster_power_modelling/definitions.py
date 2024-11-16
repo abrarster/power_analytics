@@ -6,6 +6,7 @@ from eupower_core.dagster_resources import (
 )
 from . import jobs
 from . import assets
+from .resources import RateLimiter
 
 warnings.filterwarnings("ignore", category=dagster.ExperimentalWarning)
 
@@ -14,6 +15,7 @@ resources = {
     "postgres": PostgresResource(
         user=dagster.EnvVar("POSTGRES_USER"), password=dagster.EnvVar("POSTGRES_PWD")
     ),
+    "rate_limiter": RateLimiter(calls_per_minute=200),
 }
 assets = dagster.load_assets_from_package_module(assets)
 

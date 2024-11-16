@@ -70,11 +70,10 @@ def download_from_ned(
     return response
 
 
-def parse_ned_response(r: requests.Response) -> pd.DataFrame:
-    response = r.json()
-    if len(response["hydra:member"]) == 0:
+def parse_ned_response(r: dict) -> pd.DataFrame:
+    if len(r["hydra:member"]) == 0:
         raise NoDataError
-    df_raw = pd.DataFrame.from_records(response["hydra:member"])
+    df_raw = pd.DataFrame.from_records(r["hydra:member"])
 
     df = df_raw.assign(
         granularity=lambda x: _clean_column(
