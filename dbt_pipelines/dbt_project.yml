@@ -1,0 +1,25 @@
+
+name: 'dbt_pipelines'
+version: '1.0.0'
+profile: 'dbt_pipelines'
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+clean-targets:         # directories to be removed by `dbt clean`
+  - "target"
+  - "dbt_packages"
+
+models:
+  dbt_pipelines:
+    scrapes:
+      elia:
+        +materialized: "view"
+        +schema: "elia"
+        +meta:
+          dagster:
+            group: "elia"
