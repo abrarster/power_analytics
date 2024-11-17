@@ -1,8 +1,19 @@
 from datetime import datetime
 import time
 import threading
-from dagster import ConfigurableResource, InitResourceContext
-from typing import Optional
+from dagster import (
+    ConfigurableResource,
+    InitResourceContext,
+    resource,
+    IOManager,
+    InputContext,
+    OutputContext,
+    ConfigurableIOManager,
+)
+from typing import Optional, Any
+from pydantic import Field
+import pandas as pd
+from eupower_core.utils.databases import PostgresDb
 
 
 class RateLimiterClient:
@@ -41,3 +52,55 @@ class RateLimiter(ConfigurableResource):
         if self._client is None:
             raise RuntimeError("RateLimiter client not initialized")
         return self._client.wait_for_capacity()
+
+
+class PostgresIOManager(ConfigurableIOManager):
+    host: str = Field(default="localhost")
+    port: int = Field(default=5432)
+    user: str = Field(default="postgres")
+    password: str = Field(default="")
+
+    def _get_db_connection(self) -> PostgresDb:
+        return PostgresDb(self.user, self.password, self.host, self.port)
+
+    def handle_output(self, context: OutputContext, obj: Any) -> None:
+        """Handles saving the output to Postgres"""
+        table_name = context.asset_key.path[-1]
+        schema = (
+            context.asset_key.path[-2] if len(context.asset_key.path) > 1 else "public"
+        )
+
+        with self._get_db_connection() as db:
+            if isinstance(obj, pd.DataFrame):
+                # Handle DataFrame
+                obj.to_sql(
+                    name=table_name,
+                    con=db.engine,
+                    schema=schema,
+                    if_exists="replace",
+                    index=False,
+                )
+            else:
+                # For other types, you might want to implement different storage logic
+                raise NotImplementedError(
+                    f"Storage of type {type(obj)} not supported by PostgresIOManager"
+                )
+
+    def load_input(self, context: InputContext) -> Any:
+        """Loads input from Postgres"""
+        table_name = context.asset_key.path[-1]
+        schema = (
+            context.asset_key.path[-2] if len(context.asset_key.path) > 1 else "public"
+        )
+
+        with self._get_db_connection() as db:
+            # By default, load as DataFrame
+            df = pd.read_sql_table(table_name=table_name, schema=schema, con=db.engine)
+            return df
+
+
+@resource(config_schema={"connection_url": str})
+def postgres_io_manager(init_context):
+    return PostgresIOManager(
+        connection_url=init_context.resource_config["connection_url"],
+    )

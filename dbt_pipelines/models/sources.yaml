@@ -1,0 +1,58 @@
+version: 1
+
+sources:
+  - name: rte
+    tables:
+      - name: realtime_consumption_raw
+      - name: eco2mix_balances
+      - name: generation_by_fuel_15min
+      - name: generation_by_fuel
+      - name: rte_query_generation_byunit
+  - name: entsoe
+    tables:
+      - name: entsoe_demand
+      - name: entsoe_areas
+      - name: entsoe_generation_by_unit
+      - name: psr_types
+      - name: fct_entsoe_generation_by_fuel
+      - name: entsoe_production_units
+  - name: mapping_tables
+    schema: mapping_tables
+    database: postgres
+    tables:
+      - name: unit_mapping
+      - name: elia_fuel_codes
+        meta:
+          dagster:
+            asset_key: ['elia_fuel_codes']
+  - name: elia
+    schema: elia
+    database: postgres
+    tables:
+      - name: da_gen_byfuel
+        meta:
+          dagster:
+            asset_key: ['elia_da_gen_byfuel']
+      - name: grid_load
+        meta:
+          dagster:
+            asset_key: ['elia_grid_load']
+      - name: itc_da_comex
+      - name: itc_phys_flow
+      - name: itc_total_comex
+      - name: rt_gen_byfuel
+        meta:
+          dagster:
+            asset_key: ['elia_rt_gen_byfuel']
+      - name: solar_generation_hist
+        meta:
+          dagster:
+            asset_key: ['elia_solar_generation_hist']
+      - name: total_load
+        meta:
+          dagster:
+            asset_key: ['elia_total_load']
+      - name: wind_generation_hist
+        meta:
+          dagster:
+            asset_key: ['elia_wind_generation_hist']

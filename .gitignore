@@ -175,3 +175,6 @@ core/eupower_core/eupower_core/.DS_Store
 .idea/.gitignore
 .idea/dataSources.xml
 .vscode/settings.json
+dbt_packages/
+dbt_pipelines/logs/
+dbt_pipelines/config/profiles.yml

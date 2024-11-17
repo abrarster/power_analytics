@@ -1,0 +1,15 @@
+version: 1
+
+models:
+  - name: stg_rt_gen_byfuel
+  - name: stg_da_gen_byfuel
+  - name: stg_elia_grid_load
+  - name: stg_elia_solar_generation_hist
+  - name: stg_elia_wind_generation_hist
+  - name: stg_elia_total_load
+  - name: da_gen_byfuel_elia_to_entsoe
+    config:
+      materialized: table
+  - name: rt_gen_byfuel_elia_to_entsoe
+    config:
+      materialized: table
