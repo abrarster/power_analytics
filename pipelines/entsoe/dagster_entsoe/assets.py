@@ -617,4 +617,4 @@ def _get_date_window(
     select="scrapes.entsoe",  # This selects all models that depend on entsoe sources
 )
 def entsoe_dbt_assets(context: dagster.AssetExecutionContext, dbt: DbtCliResource):
-    dbt.cli(["build"], context=context).wait()
+    yield from dbt.cli(["build"], context=context).stream()
