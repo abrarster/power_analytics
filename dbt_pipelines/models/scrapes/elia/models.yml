@@ -13,3 +13,4 @@ models:
   - name: rt_gen_byfuel_elia_to_entsoe
     config:
       materialized: table
+  - name: elia_itc_phys_flow_clean
