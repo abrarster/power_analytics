@@ -23,3 +23,9 @@ models:
         +meta:
           dagster:
             group: "elia"
+      entsoe:
+        +materialized: "view"
+        +schema: "entsoe"
+        +meta:
+          dagster:
+            group: "entsoe"

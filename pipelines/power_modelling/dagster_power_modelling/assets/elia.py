@@ -188,6 +188,7 @@ def create_elia_raw_asset(
         name=f"elia_{path_prefix}_raw",  # Add unique name based on path_prefix
         tags={"storage": "filesystem"},
         partitions_def=dagster.DailyPartitionsDefinition(start_date="2022-01-01"),
+        kinds={'python', 'file'}
     )
     def _elia_asset_raw(
         context: dagster.AssetExecutionContext,
@@ -212,6 +213,7 @@ def create_elia_raw_asset(
         name=f"elia_{path_prefix}",
         tags={"storage": "postgres"},
         partitions_def=dagster.DailyPartitionsDefinition(start_date="2022-01-01"),
+        kinds={'python', 'postgres'}
     )
     def _elia_asset_db(
         context: dagster.AssetExecutionContext,

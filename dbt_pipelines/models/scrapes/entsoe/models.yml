@@ -1,0 +1,6 @@
+version: 1
+
+models:
+  - name: entsoe_net_generation_by_fuel
+    config:
+      materialized: table
