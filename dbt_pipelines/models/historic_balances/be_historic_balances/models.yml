@@ -2,3 +2,4 @@ version: 1
 
 models:
   - name: be_historic_balances
+  - name: be_demand_multisource

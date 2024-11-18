@@ -4,3 +4,4 @@ models:
   - name: entsoe_net_generation_by_fuel
     config:
       materialized: table
+  - name: entsoe_demand_clean
