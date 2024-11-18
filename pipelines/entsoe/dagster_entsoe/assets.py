@@ -1,4 +1,5 @@
 import dagster
+import dagster_dbt
 import pandas as pd
 import requests
 import warnings
@@ -12,6 +13,7 @@ from eupower_core.dagster_resources import (
     MySqlResource,
     PostgresResource,
 )
+from dagster_dbt import DbtCliResource, dbt_assets
 from .constants import ASSET_GROUP
 from .mapping_tables import entsoe_areas, entsoe_psr_types
 
@@ -122,6 +124,7 @@ country_codes = {
     ),
     group_name=ASSET_GROUP,
     tags={"storage": "filesystem", "scrape_source": "entsoe"},
+    kinds={'python', 'file'}
 )
 def entsoe_generation_by_fuel_raw(
     context: dagster.AssetExecutionContext, fs: FilesystemResource
@@ -169,6 +172,7 @@ def entsoe_generation_by_fuel_raw(
     ),
     group_name=ASSET_GROUP,
     tags={"storage": "postgres"},
+    kinds={'python', 'postgres'}
 )
 def entsoe_generation_by_fuel(
     context: dagster.AssetExecutionContext,
@@ -208,6 +212,7 @@ def entsoe_generation_by_fuel(
     deps=[entsoe_generation_by_fuel, entsoe_areas, entsoe_psr_types],
     group_name=ASSET_GROUP,
     tags={"storage": "postgres"},
+    kinds={'python', 'postgres'}
 )
 def fct_entsoe_generation_by_fuel(
     context: dagster.AssetExecutionContext, postgres: PostgresResource
@@ -257,6 +262,7 @@ def fct_entsoe_generation_by_fuel(
     ),
     group_name=ASSET_GROUP,
     tags={"storage": "filesystem", "scrape_source": "entsoe"},
+    kinds={'python', 'file'}
 )
 def entsoe_demand_raw(context: dagster.AssetExecutionContext, fs: FilesystemResource):
     api_key = dagster.EnvVar("ENTSOE_API_KEY").get_value()
@@ -288,6 +294,7 @@ def entsoe_demand_raw(context: dagster.AssetExecutionContext, fs: FilesystemReso
     ),
     group_name=ASSET_GROUP,
     tags={"storage": "postgres"},
+    kinds={'python', 'postgres'}
 )
 def entsoe_demand(
     context: dagster.AssetExecutionContext,
@@ -328,6 +335,7 @@ def entsoe_demand(
     partitions_def=dagster.DailyPartitionsDefinition(start_date="2022-01-01"),
     group_name=ASSET_GROUP,
     tags={"storage": "filesystem", "scrape_source": "entsoe"},
+    kinds={'python', 'file'}
 )
 def entsoe_production_units_raw(
     context: dagster.AssetExecutionContext, fs: FilesystemResource
@@ -356,6 +364,7 @@ def entsoe_production_units_raw(
     partitions_def=dagster.DailyPartitionsDefinition(start_date="2022-01-01"),
     group_name=ASSET_GROUP,
     tags={"storage": "postgres"},
+    kinds={'python', 'postgres'}
 )
 def entsoe_production_units(
     context: dagster.AssetExecutionContext,
@@ -413,6 +422,7 @@ def entsoe_production_units(
     ),
     group_name=ASSET_GROUP,
     tags={"storage": "filesystem", "scrape_source": "entsoe"},
+    kinds={'python', 'file'}
 )
 def entsoe_generation_by_unit_raw(
     context: dagster.AssetExecutionContext, fs: FilesystemResource
@@ -470,6 +480,7 @@ def entsoe_generation_by_unit_raw(
     ),
     group_name=ASSET_GROUP,
     tags={"storage": "postgres"},
+    kinds={'python', 'postgres'}
 )
 def entsoe_generation_by_unit(
     context: dagster.AssetExecutionContext,
@@ -518,6 +529,7 @@ def entsoe_generation_by_unit(
     ),
     group_name=ASSET_GROUP,
     tags={"storage": "filesystem", "scrape_source": "entsoe"},
+    kinds={'python', 'file'}
 )
 def entsoe_crossborder_flows_raw(
     context: dagster.AssetExecutionContext, fs: FilesystemResource
@@ -555,6 +567,7 @@ def entsoe_crossborder_flows_raw(
     ),
     group_name=ASSET_GROUP,
     tags={"storage": "postgres"},
+    kinds={'python', 'postgres'}
 )
 def entsoe_crossborder_flows(
     context: dagster.AssetExecutionContext,
@@ -597,3 +610,11 @@ def _get_date_window(
         hours=23, minutes=59, seconds=59
     )
     return start_date, end_date
+
+
+@dbt_assets(
+    manifest="/Users/abrar/Python/power_analytics/dbt_pipelines/target/manifest.json",
+    select="source:entsoe+"  # This selects all models that depend on entsoe sources
+)
+def entsoe_dbt_assets(context: dagster.AssetExecutionContext, dbt: DbtCliResource):
+    dbt.cli(["build"], context=context).wait()

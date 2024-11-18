@@ -9,12 +9,29 @@ sources:
       - name: generation_by_fuel
       - name: rte_query_generation_byunit
   - name: entsoe
+    schema: entsoe
+    database: postgres
     tables:
       - name: entsoe_demand
+        meta:
+          dagster:
+            asset_key: ['entsoe_demand']
       - name: entsoe_areas
+        meta:
+          dagster:
+            asset_key: ['entsoe_areas']
       - name: entsoe_generation_by_unit
+        meta:
+          dagster:
+            asset_key: ['entsoe_generation_by_unit']
       - name: psr_types
+        meta:
+          dagster:
+            asset_key: ['psr_types']
       - name: fct_entsoe_generation_by_fuel
+        meta:
+          dagster:
+            asset_key: ['fct_entsoe_generation_by_fuel']
       - name: entsoe_production_units
   - name: mapping_tables
     schema: mapping_tables

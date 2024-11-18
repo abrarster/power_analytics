@@ -1,1 +1,1 @@
-ASSET_GROUP = "entsoe_mapping_tables"
+ASSET_GROUP = "entsoe"

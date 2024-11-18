@@ -1,5 +1,6 @@
 import warnings
 import dagster
+import dagster_dbt
 from eupower_core.dagster_resources import (
     FilesystemResource,
     MySqlResource,
@@ -11,6 +12,9 @@ from . import jobs
 
 warnings.filterwarnings("ignore", category=dagster.ExperimentalWarning)
 
+
+DBT_PROJECT_DIR = "/Users/abrar/Python/power_analytics/dbt_pipelines"
+DBT_PROFILES_DIR = "/Users/abrar/Python/power_analytics/dbt_pipelines/config"
 FS_CONFIG = {"root_folder": dagster.EnvVar("FSRESOURCE_ROOT")}
 RESOURCES = {
     "fs": FilesystemResource(**FS_CONFIG),
@@ -23,6 +27,10 @@ RESOURCES = {
     ),
     "duckdb_postgres": DuckDBtoPostgresResource(
         user=dagster.EnvVar("POSTGRES_USER"), password=dagster.EnvVar("POSTGRES_PWD")
+    ),
+    "dbt": dagster_dbt.DbtCliResource(
+        project_dir=DBT_PROJECT_DIR,
+        profiles_dir=DBT_PROFILES_DIR,
     ),
 }
 
