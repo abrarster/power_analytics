@@ -1,6 +1,7 @@
 import warnings
 import dagster
 import dagster_dbt
+warnings.filterwarnings("ignore", category=dagster.ExperimentalWarning)
 from eupower_core.dagster_resources import (
     FilesystemResource,
     PostgresResource,
@@ -8,8 +9,6 @@ from eupower_core.dagster_resources import (
 from . import jobs
 from . import assets
 from .resources import RateLimiter, postgres_io_manager
-
-warnings.filterwarnings("ignore", category=dagster.ExperimentalWarning)
 
 DBT_PROJECT_DIR = "/Users/abrar/Python/power_analytics/dbt_pipelines"
 DBT_PROFILES_DIR = "/Users/abrar/Python/power_analytics/dbt_pipelines/config"
@@ -39,5 +38,6 @@ defs = dagster.Definitions(
         jobs.elia_da_history,
         jobs.ren_history,
         jobs.ren_capacity,
+        jobs.process_elia,
     ],
 )

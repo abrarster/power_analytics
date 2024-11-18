@@ -1,5 +1,7 @@
 import warnings
 import dagster
+warnings.filterwarnings("ignore", category=dagster.ExperimentalWarning)
+
 import dagster_dbt
 from eupower_core.dagster_resources import (
     FilesystemResource,
@@ -10,7 +12,7 @@ from eupower_core.dagster_resources import (
 from . import assets, mapping_tables
 from . import jobs
 
-warnings.filterwarnings("ignore", category=dagster.ExperimentalWarning)
+
 
 
 DBT_PROJECT_DIR = "/Users/abrar/Python/power_analytics/dbt_pipelines"

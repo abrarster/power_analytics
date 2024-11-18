@@ -2,6 +2,16 @@ import dagster
 from . import assets
 
 
+def has_dbt_kind(asset):
+    # Get the kind tag and convert to set for membership testing
+    kinds_str = asset.tags.get("kind", "")
+    if isinstance(kinds_str, str):
+        kinds = {k.strip() for k in kinds_str.split(",")}
+    else:
+        kinds = set(kinds_str)
+    return "dbt" in kinds
+
+
 elia_rt_history = dagster.define_asset_job(
     "elia_rt_history_scrape",
     selection=dagster.AssetSelection.assets(
@@ -46,4 +56,22 @@ ren_capacity = dagster.define_asset_job(
     selection=dagster.AssetSelection.assets(
         assets.ren.ren_capacities_raw, assets.ren.ren_capacities
     ),
+)
+process_elia = dagster.define_asset_job(
+    "process_elia",
+    selection=dagster.AssetSelection.assets(
+        # Use the full asset keys including the group
+        ("elia", "stg_da_gen_byfuel"),
+        ("elia", "stg_elia_solar_generation_hist"),
+        ("elia", "stg_elia_wind_generation_hist"),
+        ("elia", "stg_rt_gen_byfuel"),
+        ("elia", "da_gen_byfuel_elia_to_entsoe"),
+        ("elia", "elia_solar_generation_hist_clean"),
+        ("elia", "elia_wind_generation_hist_clean"),
+        ("elia", "rt_gen_byfuel_elia_to_entsoe"),
+        ("elia", "elia_gen_byfuel_multisource"),
+        ("elia", "stg_elia_grid_load"),
+        ("elia", "stg_elia_total_load"),
+        ("elia", "elia_demand"),
+    )
 )

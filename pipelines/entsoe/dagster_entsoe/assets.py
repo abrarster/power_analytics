@@ -614,7 +614,7 @@ def _get_date_window(
 
 @dbt_assets(
     manifest="/Users/abrar/Python/power_analytics/dbt_pipelines/target/manifest.json",
-    select="source:entsoe+"  # This selects all models that depend on entsoe sources
+    select="scrapes.entsoe",  # This selects all models that depend on entsoe sources
 )
 def entsoe_dbt_assets(context: dagster.AssetExecutionContext, dbt: DbtCliResource):
     dbt.cli(["build"], context=context).wait()

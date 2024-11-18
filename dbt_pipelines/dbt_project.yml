@@ -29,3 +29,10 @@ models:
         +meta:
           dagster:
             group: "entsoe"
+    historic_balances:
+      be_historic_balances:
+        +materialized: "view"
+        +schema: "be_historic_balances"
+        +meta:
+          dagster:
+            group: "be_historic_balances"
