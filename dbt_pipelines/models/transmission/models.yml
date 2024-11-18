@@ -2,3 +2,4 @@ version: 1
 
 models:
   - name: interchange_phys_flow_multisource
+  - name: net_import_position_physical
