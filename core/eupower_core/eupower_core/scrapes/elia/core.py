@@ -10,6 +10,9 @@ from typing import Optional
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 ROOT = "https://opendata.elia.be/api/explore/v2.1/catalog/datasets/{series_id}/exports/json"
+REMIT_ROOT = (
+    "https://opendata.elia.be/api/explore/v2.1/catalog/datasets/{series_id}/records"
+)
 
 
 class EliaTs(Enum):
@@ -23,8 +26,6 @@ class EliaTs(Enum):
     AVAILABILITY_BYFUEL = "ods037"
     AVAILABILITY_BYUNIT = "ods038"
     INSTALLED_CAP_BYFUEL = "ods035"
-    INSTALLED_CAP_BYUNIT_OLD = "ods036"
-    INSTALLED_CAP_BYUNIT = "ods179"
     WIND_GENERATION_HIST = "ods031"
     WIND_GENERATION_RT = "ods086"
     SOLAR_GENERATION_HIST = "ods032"
@@ -33,35 +34,54 @@ class EliaTs(Enum):
     ITC_DA_COMEX = "ods015"
     ITC_TOTAL_COMEX = "ods016"
     ITC_PHYS_FLOW = "ods026"
+    GENERATION_UNITS = "ods179"
 
     def exec_query(
         self, start: date, end: date, cert: Optional[str] = None
     ) -> requests.Response:
-        return execute_ts_query(self.value, start, end, cert)
+        if self.name == "GENERATION_UNITS":
+            return get_units(start)
+        else:
+            return execute_ts_query(self.value, start, end, cert)
 
 
 class EliaRemits(Enum):
-    PLANNED_OUTAGES = "ods040"
-    FORCED_OUTAGES = "ods039"
+    PLANNED_OUTAGES = "ods180"
+    FORCED_OUTAGES = "ods181"
 
     def exec_query(
-        self,
-        remit_start_date: date,
-        remit_end_date: date,
-        cert: Optional[str] = None
-    ) -> pd.DataFrame:
-        response = execute_remit_query(self.value, remit_start_date, remit_end_date, cert)
-        return (
-            pd.DataFrame.from_records(response)
-            .assign(
-                startdatetime=lambda x: pd.to_datetime(x.startdatetime),
-                enddatetime=lambda x: pd.to_datetime(x.enddatetime),
-                startoutagetstime=lambda x: pd.to_datetime(x.startoutagetstime),
-                endoutagetstime=lambda x: pd.to_datetime(x.endoutagetstime),
-                lastupdated=lambda x: pd.to_datetime(x.lastupdated),
-            )
-            .sort_values(by="lastupdated", ascending=True)
+        self, remit_start_date: date, remit_end_date: date, cert: Optional[str] = None
+    ) -> requests.Response:
+        response = execute_remit_query(
+            self.value, remit_start_date, remit_end_date, cert
         )
+        return response
+
+
+def get_units(as_of_date: date) -> requests.Response:
+    session = requests.Session()
+    url = REMIT_ROOT.format(series_id="ods179")
+    where_clause = []
+    if as_of_date:
+        where_clause.append(
+            "date>=date'{}'".format(as_of_date.strftime("%Y-%m-%d"))
+        )
+    if as_of_date:
+        where_clause.append(
+            "date<date'{}'".format(
+                (as_of_date + timedelta(days=1)).strftime("%Y-%m-%d")
+            )
+        )
+    if len(where_clause) > 0:
+        where_clause = " and ".join(where_clause)
+    else:
+        where_clause = None
+    params = {"limit": -1, "timezone": "UTC"}
+    if where_clause:
+        params["where"] = where_clause
+    response = session.get(url, params=params)
+    response.raise_for_status()
+    return response
 
 
 def execute_ts_query(
@@ -95,13 +115,15 @@ def execute_remit_query(
     series_id: str,
     remit_start_date: date,
     remit_end_date: date,
-    cert: Optional[str] = None
-):
+    cert: Optional[str] = None,
+) -> requests.Response:
     session = requests.Session()
     session.verify = False if not cert else cert
-    url = ROOT.format(series_id=series_id)
+    url = REMIT_ROOT.format(series_id=series_id)
     where_clause = []
-    where_clause.append("lastupdated>=date'{}'".format(remit_start_date.strftime("%Y-%m-%d")))
+    where_clause.append(
+        "lastupdated>=date'{}'".format(remit_start_date.strftime("%Y-%m-%d"))
+    )
     where_clause.append(
         "lastupdated<date'{}'".format(
             (remit_end_date + timedelta(days=1)).strftime("%Y-%m-%d")
@@ -114,5 +136,4 @@ def execute_remit_query(
         "where": where_clause,
     }
     response = session.get(url, params=params)
-    response.raise_for_status()
-    return json.loads(response.content)
+    return response
