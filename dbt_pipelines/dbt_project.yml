@@ -36,3 +36,9 @@ models:
         +meta:
           dagster:
             group: "be_historic_balances"
+    transmission:
+      +materialized: "view"
+      +schema: "transmission"
+      +meta:
+        dagster:
+          group: "transmission"
