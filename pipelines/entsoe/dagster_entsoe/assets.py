@@ -554,6 +554,79 @@ def entsoe_crossborder_flows_raw(
     except NoMatchingDataError:
         context.log.warning(f"No data for {region} on {start_date}")
 
+@dagster.asset(
+    partitions_def=dagster.MultiPartitionsDefinition(
+        {
+            "date": dagster.DailyPartitionsDefinition(start_date="2024-01-01"),
+            "region": dagster.StaticPartitionsDefinition(
+                country_codes["crossborder_flows"]
+            ),
+        }
+    ),
+    group_name=ASSET_GROUP,
+    tags={"storage": "filesystem", "scrape_source": "entsoe"},
+    kinds={'python', 'file'}
+)
+def entsoe_da_scheduled_exchange_raw(
+    context: dagster.AssetExecutionContext, fs: FilesystemResource
+):
+    api_key = dagster.EnvVar("ENTSOE_API_KEY").get_value()
+    for_date = context.partition_key.keys_by_dimension["date"]
+    region = context.partition_key.keys_by_dimension["region"]
+
+    start_date, end_date = _get_date_window(for_date)
+    writer = fs.get_writer(
+        f"entsoe/da_scheduled_exchange/{start_date.strftime('%Y%m%d')}/{region}"
+    )
+    writer.delete_data()
+    output_path = writer.base_path
+    scraper = entsoe.FileWritingEntsoeScraper(
+        api_key=api_key, output_dir=output_path
+    ).set_dates(start_date, end_date)
+    try:
+        scraper.query_da_scheduled_exchange(region, context.log)
+    except requests.exceptions.HTTPError:
+        context.log.warning(f"HTTP error for {region} on {start_date}")
+    except NoMatchingDataError:
+        context.log.warning(f"No data for {region} on {start_date}")
+
+
+@dagster.asset(
+    partitions_def=dagster.MultiPartitionsDefinition(
+        {
+            "date": dagster.DailyPartitionsDefinition(start_date="2024-01-01"),
+            "region": dagster.StaticPartitionsDefinition(
+                country_codes["crossborder_flows"]
+            ),
+        }
+    ),
+    group_name=ASSET_GROUP,
+    tags={"storage": "filesystem", "scrape_source": "entsoe"},
+    kinds={'python', 'file'}
+)
+def entsoe_da_total_scheduled_exchange_raw(
+    context: dagster.AssetExecutionContext, fs: FilesystemResource
+):
+    api_key = dagster.EnvVar("ENTSOE_API_KEY").get_value()
+    for_date = context.partition_key.keys_by_dimension["date"]
+    region = context.partition_key.keys_by_dimension["region"]
+
+    start_date, end_date = _get_date_window(for_date)
+    writer = fs.get_writer(
+        f"entsoe/da_total_scheduled_exchange/{start_date.strftime('%Y%m%d')}/{region}"
+    )
+    writer.delete_data()
+    output_path = writer.base_path
+    scraper = entsoe.FileWritingEntsoeScraper(
+        api_key=api_key, output_dir=output_path
+    ).set_dates(start_date, end_date)
+    try:
+        scraper.query_da_total_scheduled_exchange(region, context.log)
+    except requests.exceptions.HTTPError:
+        context.log.warning(f"HTTP error for {region} on {start_date}")
+    except NoMatchingDataError:
+        context.log.warning(f"No data for {region} on {start_date}")
+
 
 @dagster.asset(
     deps=["entsoe_crossborder_flows_raw"],
@@ -600,6 +673,100 @@ def entsoe_crossborder_flows(
     with postgres_db as db:
         db.execute_statements(stmt_create_table)
         db.write_dataframe(df, "entsoe", "entsoe_crossborder_flows")
+
+
+@dagster.asset(
+    deps=["entsoe_da_scheduled_exchange_raw"],
+    partitions_def=dagster.MultiPartitionsDefinition(
+        {
+            "date": dagster.DailyPartitionsDefinition(start_date="2024-01-01"),
+            "region": dagster.StaticPartitionsDefinition(
+                country_codes["crossborder_flows"]
+            ),
+        }
+    ),
+    group_name=ASSET_GROUP,
+    tags={"storage": "postgres"},
+    kinds={'python', 'postgres'}
+)
+def entsoe_da_scheduled_exchange(
+    context: dagster.AssetExecutionContext,
+    fs: FilesystemResource,
+    postgres: PostgresResource,
+):
+    for_date = context.partition_key.keys_by_dimension["date"]
+    region = context.partition_key.keys_by_dimension["region"]
+    folder_path = fs.get_writer(
+        f"entsoe/da_scheduled_exchange/{pd.to_datetime(for_date).strftime('%Y%m%d')}/{region}"
+    ).base_path
+    parser = entsoe.EntsoeFileParser(folder_path)
+    df = parser.parse_files()
+    postgres_db = postgres.get_db_connection()
+    stmt_create_table = """
+        CREATE SCHEMA IF NOT EXISTS entsoe
+        --END STATEMENT--
+
+        CREATE TABLE IF NOT EXISTS entsoe.entsoe_da_scheduled_exchange (
+            for_date VARCHAR(255),
+            value FLOAT,
+            unit VARCHAR(255),
+            in_domain VARCHAR(255),
+            out_domain VARCHAR(255),
+            doc_type VARCHAR(255),
+            PRIMARY KEY (for_date, in_domain, out_domain)
+        )
+        --END STATEMENT--
+    """
+    with postgres_db as db:
+        db.execute_statements(stmt_create_table)
+        db.write_dataframe(df, "entsoe", "entsoe_da_scheduled_exchange")
+
+
+@dagster.asset(
+    deps=["entsoe_da_total_scheduled_exchange_raw"],
+    partitions_def=dagster.MultiPartitionsDefinition(
+        {
+            "date": dagster.DailyPartitionsDefinition(start_date="2024-01-01"),
+            "region": dagster.StaticPartitionsDefinition(
+                country_codes["crossborder_flows"]
+            ),
+        }
+    ),
+    group_name=ASSET_GROUP,
+    tags={"storage": "postgres"},
+    kinds={'python', 'postgres'}
+)
+def entsoe_da_total_scheduled_exchange(
+    context: dagster.AssetExecutionContext,
+    fs: FilesystemResource,
+    postgres: PostgresResource,
+):
+    for_date = context.partition_key.keys_by_dimension["date"]
+    region = context.partition_key.keys_by_dimension["region"]
+    folder_path = fs.get_writer(
+        f"entsoe/da_total_scheduled_exchange/{pd.to_datetime(for_date).strftime('%Y%m%d')}/{region}"
+    ).base_path
+    parser = entsoe.EntsoeFileParser(folder_path)
+    df = parser.parse_files()
+    postgres_db = postgres.get_db_connection()
+    stmt_create_table = """
+        CREATE SCHEMA IF NOT EXISTS entsoe
+        --END STATEMENT--
+
+        CREATE TABLE IF NOT EXISTS entsoe.entsoe_da_total_scheduled_exchange (
+            for_date VARCHAR(255),
+            value FLOAT,
+            unit VARCHAR(255),
+            in_domain VARCHAR(255),
+            out_domain VARCHAR(255),
+            doc_type VARCHAR(255),
+            PRIMARY KEY (for_date, in_domain, out_domain)
+        )
+        --END STATEMENT--
+    """
+    with postgres_db as db:
+        db.execute_statements(stmt_create_table)
+        db.write_dataframe(df, "entsoe", "entsoe_da_total_scheduled_exchange")
 
 
 def _get_date_window(
