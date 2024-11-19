@@ -132,40 +132,94 @@ class EntsoeScraper:
             ] = response
         return results
 
-    def query_crossborder_flows(
-        self, country_code: str, logger_instance: Optional[logging.Logger] = None
+    def _query_exchange_base(
+        self,
+        country_code: str,
+        query_method: Callable,
+        result_code: str,
+        method_kwargs: dict = None,
+        logger_instance: Optional[logging.Logger] = None,
     ) -> dict[str, str]:
+        """Base method for querying various types of cross-border exchanges.
+
+        Parameters
+        ----------
+        country_code : str
+            The country code to query
+        query_method : Callable
+            The client method to call (e.g., query_crossborder_flows)
+        result_code : str
+            The code to use in the result key (e.g., 'A88')
+        method_kwargs : dict, optional
+            Additional kwargs to pass to the query method
+        logger_instance : Optional[logging.Logger]
+            Logger instance to use
+        """
         results = {}
-        neighbours = NEIGHBOURS[country_code]
-        if logger_instance is None:
-            logger_instance = logger
-        for neighbour in neighbours:
+        method_kwargs = method_kwargs or {}
+        logger_instance = logger_instance or logger
+
+        for neighbour in NEIGHBOURS[country_code]:
             if neighbour == "DE_AT_LU":
                 continue
+
             for start_date, end_date in chunk_dates(
                 self.abs_start_date, self.abs_end_date, days_in_chunk=5
             ):
                 try:
-                    response = self.client.query_crossborder_flows(
+                    response = query_method(
                         country_code_from=country_code,
                         country_code_to=neighbour,
                         start=start_date,
                         end=end_date + pd.Timedelta(days=1),
+                        **method_kwargs,
                     )
                     results[
-                        f"A88_{country_code}_{neighbour}_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}"
+                        f"{result_code}_{country_code}_{neighbour}_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}"
                     ] = response
-                except NoMatchingDataError:
-                    logger_instance.warning(
-                        f"No matching data for {country_code} to {neighbour} from {start_date} to {end_date}"
+                except (NoMatchingDataError, InvalidBusinessParameterError) as e:
+                    error_type = (
+                        "No matching data"
+                        if isinstance(e, NoMatchingDataError)
+                        else "Invalid business parameter"
                     )
-                    continue
-                except InvalidBusinessParameterError:
                     logger_instance.warning(
-                        f"Invalid business parameter for {country_code} to {neighbour} from {start_date} to {end_date}"
+                        f"{error_type} for {country_code} to {neighbour} from {start_date} to {end_date}"
                     )
                     continue
         return results
+
+    def query_crossborder_flows(
+        self, country_code: str, logger_instance: Optional[logging.Logger] = None
+    ) -> dict[str, str]:
+        return self._query_exchange_base(
+            country_code=country_code,
+            query_method=self.client.query_crossborder_flows,
+            result_code="A88",
+            logger_instance=logger_instance,
+        )
+
+    def query_da_scheduled_exchange(
+        self, country_code: str, logger_instance: Optional[logging.Logger] = None
+    ) -> dict[str, str]:
+        return self._query_exchange_base(
+            country_code=country_code,
+            query_method=self.client.query_scheduled_exchanges,
+            result_code="A09A01",
+            method_kwargs={"dayahead": True},
+            logger_instance=logger_instance,
+        )
+
+    def query_da_total_scheduled_exchange(
+        self, country_code: str, logger_instance: Optional[logging.Logger] = None
+    ) -> dict[str, str]:
+        return self._query_exchange_base(
+            country_code=country_code,
+            query_method=self.client.query_scheduled_exchanges,
+            result_code="A09A05",
+            method_kwargs={"dayahead": False},
+            logger_instance=logger_instance,
+        )
 
     def get_units(
         self, country_code: str, as_of_date: Optional[pd.Timestamp] = None
@@ -179,7 +233,9 @@ class EntsoeScraper:
             "Implementation_DateAndOrTime": as_of_date.strftime("%Y-%m-%d"),
             "BiddingZone_Domain": lookup_area(country_code).code,
         }
-        response = self.client._base_request(params=params, start=as_of_date, end=as_of_date)
+        response = self.client._base_request(
+            params=params, start=as_of_date, end=as_of_date
+        )
         response_xml = response.text
         return {f"A95_{country_code}": response_xml}
 
@@ -280,6 +336,8 @@ class EntsoeFileParser:
         "A65": xml_parsers.parse_entsoe_load,
         "A88": xml_parsers.parse_entsoe_cross_border_flows,
         "A95": xml_parsers.parse_power_plants,
+        "A09A01": xml_parsers.parse_entsoe_cross_border_flows,
+        "A09A05": xml_parsers.parse_entsoe_cross_border_flows,
     }
 
     def __init__(self, input_dir: Union[str, Path]):
