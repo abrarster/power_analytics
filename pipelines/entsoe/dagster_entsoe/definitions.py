@@ -47,5 +47,7 @@ defs = dagster.Definitions(
         jobs.job_crossborder_flows,
         jobs.job_mapping_tables,
         jobs.job_production_units,
+        jobs.job_da_comex,
+        jobs.job_da_total_comex,
     ],
 )

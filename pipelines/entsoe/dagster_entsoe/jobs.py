@@ -26,11 +26,27 @@ job_demand = dagster.define_asset_job(
 )
 
 job_crossborder_flows = dagster.define_asset_job(
-    "Scrape_crossborder_flows",
+    "scrape_crossborder_flows",
     selection=dagster.AssetSelection.assets(
         assets.entsoe_crossborder_flows_raw, assets.entsoe_crossborder_flows
     ),
 )
+
+job_da_comex = dagster.define_asset_job(
+    "scrape_da_comex",
+    selection=dagster.AssetSelection.assets(
+        assets.entsoe_da_scheduled_exchange_raw, assets.entsoe_da_scheduled_exchange
+    ),
+)
+
+job_da_total_comex = dagster.define_asset_job(
+    "scrape_da_total_comex",
+    selection=dagster.AssetSelection.assets(
+        assets.entsoe_da_total_scheduled_exchange_raw,
+        assets.entsoe_da_total_scheduled_exchange,
+    ),
+)
+
 
 job_mapping_tables = dagster.define_asset_job(
     "Build_mapping_tables",
