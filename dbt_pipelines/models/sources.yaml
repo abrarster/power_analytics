@@ -37,6 +37,14 @@ sources:
         meta:
           dagster:
             asset_key: ['entsoe_crossborder_flows']
+      - name: entsoe_da_scheduled_exchange
+        meta:
+          dagster:
+            asset_key: ['entsoe_da_scheduled_exchange']
+      - name: entsoe_da_total_scheduled_exchange
+        meta:
+          dagster:
+            asset_key: ['entsoe_da_total_scheduled_exchange']
   - name: mapping_tables
     schema: mapping_tables
     database: postgres

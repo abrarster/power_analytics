@@ -4,7 +4,7 @@ WITH
                b.name                  AS bidding_zone_to,
                a.for_date::timestamptz AS for_date,
                a.value
-        FROM {{ source('entsoe', 'entsoe_crossborder_flows') }} a
+        FROM {{ source('entsoe', 'entsoe_da_total_scheduled_exchange') }} a
                 LEFT JOIN {{ source('entsoe', 'entsoe_areas') }} b ON a.in_domain = b.code
                 LEFT JOIN {{ source('entsoe', 'entsoe_areas') }} c ON a.out_domain = c.code
     ),
@@ -29,7 +29,7 @@ WITH
                -value            AS value
         FROM hourly_downsampled
     )
-SELECT 'physical_flow' as flow_type,
+SELECT 'da_total_comex' as flow_type,
        bidding_zone_from,
        bidding_zone_to,
        for_date,

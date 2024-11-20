@@ -1,0 +1,10 @@
+{{ 
+    dbt_utils.union_relations(
+        relations=[
+            ref('entsoe_da_comex'), 
+            ref('entsoe_da_total_comex'), 
+            ref('entsoe_interchange_physical')
+        ],
+        source_column_name=None
+    ) 
+}}
