@@ -635,12 +635,14 @@ def create_entsoe_exchange_assets(
         "crossborder_flows": "cross_border_flows",
         "da_scheduled_exchange": "da_scheduled_exchange",
         "da_total_scheduled_exchange": "da_total_scheduled_exchange",
+        "dayahead_ntc": "dayahead_ntc",
     }
 
     scraper_method_mapping = {
         "crossborder_flows": "query_crossborder_flows",
         "da_scheduled_exchange": "query_da_scheduled_exchange",
         "da_total_scheduled_exchange": "query_da_total_scheduled_exchange",
+        "dayahead_ntc": "query_dayahead_ntc",
     }
 
     raw_asset_name = f"entsoe_{exchange_type}_raw"
@@ -668,7 +670,7 @@ def create_entsoe_exchange_assets(
             api_key=api_key, output_dir=output_path
         ).set_dates(start_date, end_date)
         try:
-            scraper.query_crossborder_flows(region, context.log)
+            getattr(scraper, scraper_method_mapping[exchange_type])(region, context.log)
         except requests.exceptions.HTTPError:
             context.log.warning(f"HTTP error for {region} on {start_date}")
         except NoMatchingDataError:
@@ -744,6 +746,11 @@ entsoe_da_total_scheduled_exchange_raw, entsoe_da_total_scheduled_exchange = (
     create_entsoe_exchange_assets(
         exchange_type="da_total_scheduled_exchange", partitions_def=exchange_partitions
     )
+)
+
+# Create day-ahead NTC assets
+entsoe_dayahead_ntc_raw, entsoe_dayahead_ntc = create_entsoe_exchange_assets(
+    exchange_type="dayahead_ntc", partitions_def=exchange_partitions
 )
 
 

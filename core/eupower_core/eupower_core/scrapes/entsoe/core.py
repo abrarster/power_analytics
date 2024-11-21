@@ -204,6 +204,16 @@ class EntsoeScraper:
                     continue
         return results
 
+    def query_dayahead_ntc(
+        self, country_code: str, logger_instance: Optional[logging.Logger] = None
+    ) -> dict[str, str]:
+        return self._query_exchange_base(
+            country_code=country_code,
+            query_method=self.client.query_net_transfer_capacity_dayahead,
+            result_code="A61",
+            logger_instance=logger_instance,
+        )
+
     def query_crossborder_flows(
         self, country_code: str, logger_instance: Optional[logging.Logger] = None
     ) -> dict[str, str]:
@@ -354,6 +364,7 @@ class EntsoeFileParser:
         "A95": xml_parsers.parse_power_plants,
         "A09A01": xml_parsers.parse_entsoe_cross_border_flows,
         "A09A05": xml_parsers.parse_entsoe_cross_border_flows,
+        "A61": xml_parsers.parse_entsoe_cross_border_flows,
     }
 
     def __init__(self, input_dir: Union[str, Path]):
