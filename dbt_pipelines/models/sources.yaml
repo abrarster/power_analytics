@@ -45,6 +45,10 @@ sources:
         meta:
           dagster:
             asset_key: ['entsoe_da_total_scheduled_exchange']
+      - name: entsoe_da_prices
+        meta:
+          dagster:
+            asset_key: ['entsoe_da_prices']
   - name: mapping_tables
     schema: mapping_tables
     database: postgres

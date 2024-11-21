@@ -99,6 +99,21 @@ class EntsoeScraper:
             ] = response
         return results
 
+    def get_da_prices(self, country_code: str) -> dict[str, str]:
+        results = {}
+        for start_date, end_date in chunk_dates(
+            self.abs_start_date, self.abs_end_date, days_in_chunk=1
+        ):
+            response = self.client.query_day_ahead_prices(
+                country_code=country_code,
+                start=start_date,
+                end=end_date,
+            )
+            results[
+                f'A44_{country_code}_{start_date.strftime("%Y%m%d")}_{end_date.strftime("%Y%m%d")}'
+            ] = response
+        return results
+
     def get_generation_by_unit(
         self, country_code: str, fuel_type: str
     ) -> dict[str, str]:
@@ -331,6 +346,7 @@ class EntsoeFileParser:
     """
 
     PARSERS = {
+        "A44": xml_parsers.parse_entsoe_day_ahead_prices,
         "A75": xml_parsers.parse_entsoe_generation,
         "A73": xml_parsers.parse_entsoe_generation_by_unit,
         "A65": xml_parsers.parse_entsoe_load,

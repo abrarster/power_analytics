@@ -85,6 +85,14 @@ country_codes = {
         "PL",
         "RO",
         "CZ",
+        "IT",
+        "IT_CALA",
+        "IT_SICI",
+        "IT_CNOR",
+        "IT_CSUD",
+        "IT_NORD",
+        "IT_SUD",
+        "IT_SARD",
     ),
     "crossborder_flows": (
         "FR",
@@ -109,6 +117,22 @@ country_codes = {
         "PL",
         "RO",
         "CZ",
+    ),
+    "da_prices": (
+        "IT_CALA",
+        "IT_SICI",
+        "IT_CNOR",
+        "IT_CSUD",
+        "IT_NORD",
+        "IT_SUD",
+        "IT_SARD",
+        "FR",
+        "DE_LU",
+        "CH",
+        "AT",
+        "SI",
+        "GR",
+        "ME",
     ),
 }
 
@@ -329,6 +353,84 @@ def entsoe_demand(
     with postgres_db as db:
         db.execute_statements(stmt_create_table)
         db.write_dataframe(df, "entsoe", "entsoe_demand")
+
+
+@dagster.asset(
+    partitions_def=dagster.MultiPartitionsDefinition(
+        {
+            "date": dagster.DailyPartitionsDefinition(start_date="2022-01-01"),
+            "region": dagster.StaticPartitionsDefinition(country_codes["da_prices"]),
+        }
+    ),
+    group_name=ASSET_GROUP,
+    tags={"storage": "filesystem", "scrape_source": "entsoe"},
+    kinds={"python", "file"},
+)
+def entsoe_da_prices_raw(
+    context: dagster.AssetExecutionContext, fs: FilesystemResource
+):
+    api_key = dagster.EnvVar("ENTSOE_API_KEY").get_value()
+    for_date = context.partition_key.keys_by_dimension["date"]
+    region = context.partition_key.keys_by_dimension["region"]
+
+    start_date, end_date = _get_date_window(for_date)
+    writer = fs.get_writer(f"entsoe/da_prices/{start_date.strftime('%Y%m%d')}/{region}")
+    writer.delete_data()
+    output_path = writer.base_path
+    scraper = entsoe.FileWritingEntsoeScraper(
+        api_key=api_key, output_dir=output_path
+    ).set_dates(start_date, start_date)
+    try:
+        scraper.get_da_prices(region)
+    except requests.exceptions.HTTPError:
+        context.log.warning(f"HTTP error for {region} on {start_date}")
+    except NoMatchingDataError:
+        context.log.warning(f"No data for {region} on {start_date}")
+
+
+@dagster.asset(
+    deps=["entsoe_da_prices_raw"],
+    partitions_def=dagster.MultiPartitionsDefinition(
+        {
+            "date": dagster.DailyPartitionsDefinition(start_date="2022-01-01"),
+            "region": dagster.StaticPartitionsDefinition(country_codes["da_prices"]),
+        }
+    ),
+    group_name=ASSET_GROUP,
+    tags={"storage": "postgres"},
+    kinds={"python", "postgres"},
+)
+def entsoe_da_prices(
+    context: dagster.AssetExecutionContext,
+    fs: FilesystemResource,
+    postgres: PostgresResource,
+):
+    for_date = context.partition_key.keys_by_dimension["date"]
+    region = context.partition_key.keys_by_dimension["region"]
+    folder_path = fs.get_writer(
+        f"entsoe/da_prices/{pd.to_datetime(for_date).strftime('%Y%m%d')}/{region}"
+    ).base_path
+    parser = entsoe.EntsoeFileParser(folder_path)
+    df = parser.parse_files()
+    postgres_db = postgres.get_db_connection()
+    stmt_create_table = """
+        CREATE SCHEMA IF NOT EXISTS entsoe
+        --END STATEMENT--
+
+        CREATE TABLE IF NOT EXISTS entsoe.entsoe_da_prices (
+            for_date VARCHAR,
+            price FLOAT,
+            currency VARCHAR,
+            unit VARCHAR,
+            bidding_zone VARCHAR,
+            resolution VARCHAR,
+            PRIMARY KEY (for_date, bidding_zone, resolution)
+        )
+        --END STATEMENT--
+    """
+    with postgres_db as db:
+        db.execute_statements(stmt_create_table)
+        db.write_dataframe(df, "entsoe", "entsoe_da_prices")
 
 
 @dagster.asset(

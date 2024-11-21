@@ -9,4 +9,5 @@ models:
   - name: entsoe_da_total_comex
   - name: entsoe_interchange_physical
   - name: entsoe_historic_transmission
-
+  - name: entsoe_da_prices_clean
+  - name: entsoe_da_hourly_prices
