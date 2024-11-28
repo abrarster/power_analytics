@@ -140,7 +140,7 @@ country_codes = {
 @dagster.asset(
     partitions_def=dagster.MultiPartitionsDefinition(
         {
-            "date": dagster.DailyPartitionsDefinition(start_date="2024-01-01"),
+            "date": dagster.DailyPartitionsDefinition(start_date="2023-01-01"),
             "region": dagster.StaticPartitionsDefinition(
                 country_codes["generation_by_fuel"]
             ),
@@ -188,7 +188,7 @@ def entsoe_generation_by_fuel_raw(
     deps=[entsoe_generation_by_fuel_raw],
     partitions_def=dagster.MultiPartitionsDefinition(
         {
-            "date": dagster.DailyPartitionsDefinition(start_date="2024-01-01"),
+            "date": dagster.DailyPartitionsDefinition(start_date="2023-01-01"),
             "region": dagster.StaticPartitionsDefinition(
                 country_codes["generation_by_fuel"]
             ),
@@ -280,7 +280,7 @@ def fct_entsoe_generation_by_fuel(
 @dagster.asset(
     partitions_def=dagster.MultiPartitionsDefinition(
         {
-            "date": dagster.DailyPartitionsDefinition(start_date="2024-01-01"),
+            "date": dagster.DailyPartitionsDefinition(start_date="2023-01-01"),
             "region": dagster.StaticPartitionsDefinition(country_codes["demand"]),
         }
     ),
@@ -312,7 +312,7 @@ def entsoe_demand_raw(context: dagster.AssetExecutionContext, fs: FilesystemReso
     deps=["entsoe_demand_raw"],
     partitions_def=dagster.MultiPartitionsDefinition(
         {
-            "date": dagster.DailyPartitionsDefinition(start_date="2024-01-01"),
+            "date": dagster.DailyPartitionsDefinition(start_date="2023-01-01"),
             "region": dagster.StaticPartitionsDefinition(country_codes["demand"]),
         }
     ),
@@ -722,7 +722,7 @@ def create_entsoe_exchange_assets(
 # Define the partitions once
 exchange_partitions = dagster.MultiPartitionsDefinition(
     {
-        "date": dagster.DailyPartitionsDefinition(start_date="2024-01-01"),
+        "date": dagster.DailyPartitionsDefinition(start_date="2023-01-01"),
         "region": dagster.StaticPartitionsDefinition(
             country_codes["crossborder_flows"]
         ),
