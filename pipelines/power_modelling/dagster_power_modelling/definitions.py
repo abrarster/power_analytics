@@ -39,5 +39,6 @@ defs = dagster.Definitions(
         jobs.ren_history,
         jobs.ren_capacity,
         jobs.process_elia,
+        jobs.jao_history,
     ],
 )

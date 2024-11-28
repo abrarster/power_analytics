@@ -6,6 +6,7 @@ from enum import Enum
 from zoneinfo import ZoneInfo
 from pathlib import Path
 import json
+import tenacity
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +124,17 @@ class JaoClient:
         dt_utc = dt_paris.astimezone(ZoneInfo("UTC"))
         return dt_utc.strftime(self.DATE_FORMAT)
 
+    @tenacity.retry(
+        retry=lambda retry_state: (
+            isinstance(retry_state.outcome.exception(), requests.exceptions.HTTPError)
+            and retry_state.outcome.exception().response.status_code == 429
+        ),
+        stop=tenacity.stop_after_attempt(8),
+        wait=tenacity.wait_exponential_jitter(initial=1, exp_base=2, jitter=30),
+        before_sleep=lambda retry_state: logger.warning(
+            f"Received 429, retrying in {retry_state.next_action.sleep} seconds..."
+        ),
+    )
     def _make_request(
         self,
         endpoint: str,
@@ -219,6 +231,7 @@ class JaoFileClient(JaoClient):
         method: str = "GET",
         params: Optional[Dict[str, Any]] = None,
         folder_path: Union[str, Path] = None,
+        file_name: Optional[str] = None,
         **kwargs,
     ) -> Path:
         """Make HTTP request to JAO API and save response to file."""
@@ -231,7 +244,7 @@ class JaoFileClient(JaoClient):
         file_dir = Path(folder_path) / endpoint.replace("/", "_")
         file_dir.mkdir(parents=True, exist_ok=True)
 
-        filename = self._get_filename(params)
+        filename = file_name or self._get_filename(params)
         file_path = file_dir / filename
 
         self.log(logging.INFO, f"Writing response to {file_path}")
@@ -246,6 +259,7 @@ class JaoFileClient(JaoClient):
         from_date: date,
         to_date: date,
         folder_path: Union[str, Path],
+        file_name: Optional[str] = None,
         **kwargs,
     ) -> Path:
         """Generic method to fetch data from any endpoint.
@@ -267,7 +281,10 @@ class JaoFileClient(JaoClient):
         }
 
         return self._make_request(
-            data_type.endpoint, params=params, folder_path=folder_path
+            data_type.endpoint,
+            params=params,
+            folder_path=folder_path,
+            file_name=file_name,
         )
 
     def get_monitoring(self, folder_path: Union[str, Path]) -> Path:
