@@ -1,8 +1,9 @@
 import requests
-from typing import Optional, Dict, Any, Literal, Tuple
-from datetime import datetime, date
+from typing import Optional, Dict, Any, Literal, Tuple, Union
+from datetime import datetime, date, time
 import logging
 from enum import Enum
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +14,7 @@ class DataType(Enum):
     Each enum value is a tuple of (description, endpoint_url)
     """
 
-    MONITORING = ("Monitoring", "monitoring")
+    MONITORING = ("Monitoring", "system/monitoring")
     MAX_NET_POSITIONS = ("Max Net Positions", "maxNetPositions")
     MAX_EXCHANGES = ("Max Exchanges (MaxBex)", "maxExchanges")
     INITIAL_COMPUTATION = ("Initial Computation (Virgin Domain)", "initialComputation")
@@ -53,14 +54,107 @@ class DataType(Enum):
         self.endpoint = endpoint
 
 
-class JAOClient:
-    """Client for interacting with JAO (Joint Allocation Office) API."""
+class JaoClient:
+    """Base client for interacting with JAO (Joint Allocation Office) API.
+    Returns raw response objects.
+    """
 
-    BASE_URL = "https://publicationtool.jao.eu/core/api/data"
+    BASE_URL = "https://publicationtool.jao.eu/core/api"
+    DATA_PATH = "data"
+    MONITORING_PATH = "system/monitoring"
+    DATE_FORMAT = "%Y-%m-%dT%H:%M:%S.000Z"
+    TIMEZONE = ZoneInfo("Europe/Paris")
 
     def __init__(self):
         """Initialize JAO client."""
         self.session = requests.Session()
+
+    def _format_from_date(self, d: date) -> str:
+        """Format start date to JAO API format.
+
+        Converts Paris date to UTC midnight datetime string.
+        For example, 2024-01-01 00:00 Paris becomes 2023-12-31T23:00:00.000Z UTC.
+
+        Args:
+            d: date in Europe/Paris timezone
+
+        Returns:
+            Formatted UTC datetime string for start of day
+        """
+        dt_paris = datetime.combine(d, time.min).replace(tzinfo=self.TIMEZONE)
+        dt_utc = dt_paris.astimezone(ZoneInfo("UTC"))
+        return dt_utc.strftime(self.DATE_FORMAT)
+
+    def _format_to_date(self, d: date) -> str:
+        """Format end date to JAO API format.
+
+        Converts Paris date to UTC end-of-day datetime string.
+        For example, 2024-01-01 23:00 Paris becomes 2024-01-01T22:00:00.000Z UTC.
+
+        Args:
+            d: date in Europe/Paris timezone
+
+        Returns:
+            Formatted UTC datetime string for end of day
+        """
+        dt_paris = datetime.combine(d, time(23, 0)).replace(tzinfo=self.TIMEZONE)
+        dt_utc = dt_paris.astimezone(ZoneInfo("UTC"))
+        return dt_utc.strftime(self.DATE_FORMAT)
+
+    def _make_request(
+        self,
+        endpoint: str,
+        method: str = "GET",
+        params: Optional[Dict[str, Any]] = None,
+        **kwargs,
+    ) -> requests.Response:
+        """Make HTTP request to JAO API."""
+        if not endpoint.startswith("system/"):
+            endpoint = f"{self.DATA_PATH}/{endpoint}"
+
+        url = f"{self.BASE_URL}/{endpoint.lstrip('/')}"
+
+        try:
+            response = self.session.request(
+                method=method, url=url, params=params, **kwargs
+            )
+            response.raise_for_status()
+            return response
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to make JAO API request: {e}")
+            raise
+
+    def get_data(
+        self, data_type: DataType, from_date: date, to_date: date, **kwargs
+    ) -> requests.Response:
+        """Generic method to fetch data from any endpoint.
+
+        Args:
+            data_type: The type of data to fetch
+            from_date: Start date in Europe/Paris timezone
+            to_date: End date in Europe/Paris timezone
+            **kwargs: Additional parameters to pass to the API
+
+        Returns:
+            Raw response from the API
+        """
+        params = {
+            "FromUtc": self._format_from_date(from_date),
+            "ToUtc": self._format_to_date(to_date),
+            **kwargs,
+        }
+
+        return self._make_request(data_type.endpoint, params=params)
+
+    def get_monitoring(self) -> requests.Response:
+        """Get monitoring data from system endpoint."""
+        return self._make_request(self.MONITORING_PATH)
+
+
+class JaoJsonClient(JaoClient):
+    """JSON client for interacting with JAO API.
+    Returns parsed JSON responses.
+    """
 
     def _make_request(
         self,
@@ -69,28 +163,6 @@ class JAOClient:
         params: Optional[Dict[str, Any]] = None,
         **kwargs,
     ) -> Dict[str, Any]:
-        """Make HTTP request to JAO API.
-
-        Args:
-            endpoint: API endpoint to call
-            method: HTTP method to use
-            params: Query parameters to include
-            **kwargs: Additional arguments to pass to requests
-
-        Returns:
-            JSON response from the API
-
-        Raises:
-            requests.exceptions.RequestException: If the request fails
-        """
-        url = f"{self.BASE_URL}/{endpoint.lstrip('/')}"
-
-        try:
-            response = self.session.request(
-                method=method, url=url, params=params, **kwargs
-            )
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Failed to make JAO API request: {e}")
-            raise
+        """Make HTTP request to JAO API and return JSON response."""
+        response = super()._make_request(endpoint, method, params, **kwargs)
+        return response.json()
