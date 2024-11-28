@@ -16,7 +16,6 @@ class DataType(Enum):
     Each enum value is a tuple of (description, endpoint_url)
     """
 
-    MONITORING = ("Monitoring", "system/monitoring")
     MAX_NET_POSITIONS = ("Max Net Positions", "maxNetPositions")
     MAX_EXCHANGES = ("Max Exchanges (MaxBex)", "maxExchanges")
     INITIAL_COMPUTATION = ("Initial Computation (Virgin Domain)", "initialComputation")
@@ -67,9 +66,30 @@ class JaoClient:
     DATE_FORMAT = "%Y-%m-%dT%H:%M:%S.000Z"
     TIMEZONE = ZoneInfo("Europe/Paris")
 
-    def __init__(self):
-        """Initialize JAO client."""
-        self.session = requests.Session()
+    def __init__(
+        self,
+        session: Optional[requests.Session] = None,
+        custom_logger: Optional[logging.Logger] = None,
+    ):
+        """Initialize JAO client.
+
+        Args:
+            custom_logger: Optional logger to use instead of default
+            session: Optional requests.Session to use for making requests
+        """
+        self._logger = custom_logger or logger
+        self.session = session or requests.Session()
+
+    def log(self, level: int, msg: str, *args, **kwargs) -> None:
+        """Log a message with the configured logger.
+
+        Args:
+            level: The log level (e.g., logging.INFO)
+            msg: The message to log
+            *args: Additional positional arguments for the logger
+            **kwargs: Additional keyword arguments for the logger
+        """
+        self._logger.log(level, msg, *args, **kwargs)
 
     def _format_from_date(self, d: date) -> str:
         """Format start date to JAO API format.
@@ -117,13 +137,14 @@ class JaoClient:
         url = f"{self.BASE_URL}/{endpoint.lstrip('/')}"
 
         try:
+            self.log(logging.DEBUG, f"Making request to {url} with params {params}")
             response = self.session.request(
                 method=method, url=url, params=params, **kwargs
             )
             response.raise_for_status()
             return response
         except requests.exceptions.RequestException as e:
-            logger.error(f"Failed to make JAO API request: {e}")
+            self.log(logging.ERROR, f"Failed to make JAO API request: {e}")
             raise
 
     def get_data(
@@ -200,18 +221,7 @@ class JaoFileClient(JaoClient):
         folder_path: Union[str, Path] = None,
         **kwargs,
     ) -> Path:
-        """Make HTTP request to JAO API and save response to file.
-
-        Args:
-            endpoint: API endpoint
-            method: HTTP method
-            params: Query parameters
-            folder_path: Directory where response will be saved
-            **kwargs: Additional request parameters
-
-        Returns:
-            Path to the saved response file
-        """
+        """Make HTTP request to JAO API and save response to file."""
         if folder_path is None:
             raise ValueError("folder_path must be provided")
 
@@ -224,6 +234,7 @@ class JaoFileClient(JaoClient):
         filename = self._get_filename(params)
         file_path = file_dir / filename
 
+        self.log(logging.INFO, f"Writing response to {file_path}")
         with file_path.open("w") as f:
             json.dump(response.json(), f, indent=2)
 
