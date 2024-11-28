@@ -1,9 +1,11 @@
 import requests
-from typing import Optional, Dict, Any, Literal, Tuple, Union
-from datetime import datetime, date, time
 import logging
+from typing import Optional, Dict, Any, Union
+from datetime import datetime, date, time
 from enum import Enum
 from zoneinfo import ZoneInfo
+from pathlib import Path
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -166,3 +168,104 @@ class JaoJsonClient(JaoClient):
         """Make HTTP request to JAO API and return JSON response."""
         response = super()._make_request(endpoint, method, params, **kwargs)
         return response.json()
+
+
+class JaoFileClient(JaoClient):
+    """File-saving client for interacting with JAO API.
+    Saves responses to filesystem and returns the file path.
+    """
+
+    def _get_filename(self, params: Optional[Dict[str, Any]] = None) -> str:
+        """Generate filename for the response.
+
+        Args:
+            params: Query parameters
+
+        Returns:
+            Formatted filename including timestamp and parameters
+        """
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        if params:
+            param_str = "_".join(f"{k}_{v}" for k, v in sorted(params.items()))
+            return f"{timestamp}_{param_str}.json"
+
+        return f"{timestamp}.json"
+
+    def _make_request(
+        self,
+        endpoint: str,
+        method: str = "GET",
+        params: Optional[Dict[str, Any]] = None,
+        folder_path: Union[str, Path] = None,
+        **kwargs,
+    ) -> Path:
+        """Make HTTP request to JAO API and save response to file.
+
+        Args:
+            endpoint: API endpoint
+            method: HTTP method
+            params: Query parameters
+            folder_path: Directory where response will be saved
+            **kwargs: Additional request parameters
+
+        Returns:
+            Path to the saved response file
+        """
+        if folder_path is None:
+            raise ValueError("folder_path must be provided")
+
+        response = super()._make_request(endpoint, method, params, **kwargs)
+
+        # Create full path: folder_path/endpoint/filename
+        file_dir = Path(folder_path) / endpoint.replace("/", "_")
+        file_dir.mkdir(parents=True, exist_ok=True)
+
+        filename = self._get_filename(params)
+        file_path = file_dir / filename
+
+        with file_path.open("w") as f:
+            json.dump(response.json(), f, indent=2)
+
+        return file_path
+
+    def get_data(
+        self,
+        data_type: DataType,
+        from_date: date,
+        to_date: date,
+        folder_path: Union[str, Path],
+        **kwargs,
+    ) -> Path:
+        """Generic method to fetch data from any endpoint.
+
+        Args:
+            data_type: The type of data to fetch
+            from_date: Start date in Europe/Paris timezone
+            to_date: End date in Europe/Paris timezone
+            folder_path: Directory where response will be saved
+            **kwargs: Additional parameters to pass to the API
+
+        Returns:
+            Path to the saved response file
+        """
+        params = {
+            "FromUtc": self._format_from_date(from_date),
+            "ToUtc": self._format_to_date(to_date),
+            **kwargs,
+        }
+
+        return self._make_request(
+            data_type.endpoint, params=params, folder_path=folder_path
+        )
+
+    def get_monitoring(self, folder_path: Union[str, Path]) -> Path:
+        """Get monitoring data from system endpoint.
+
+        Args:
+            folder_path: Directory where response will be saved
+
+        Returns:
+            Path to the saved response file
+        """
+        return self._make_request(self.MONITORING_PATH, folder_path=folder_path)
