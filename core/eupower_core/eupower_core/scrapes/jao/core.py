@@ -1,12 +1,12 @@
 import requests
 import logging
+import tenacity
+import json
 from typing import Optional, Dict, Any, Union
 from datetime import datetime, date, time
 from enum import Enum
 from zoneinfo import ZoneInfo
 from pathlib import Path
-import json
-import tenacity
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ class DataType(Enum):
     Each enum value is a tuple of (description, endpoint_url)
     """
 
-    MAX_NET_POSITIONS = ("Max Net Positions", "maxNetPositions")
+    MAX_NET_POSITIONS = ("Max Net Positions", "maxNetPos")
     MAX_EXCHANGES = ("Max Exchanges (MaxBex)", "maxExchanges")
     INITIAL_COMPUTATION = ("Initial Computation (Virgin Domain)", "initialComputation")
     REMEDIAL_ACTION_PREVENTIVE = ("Remedial Action Preventive", "pra")
@@ -124,17 +124,6 @@ class JaoClient:
         dt_utc = dt_paris.astimezone(ZoneInfo("UTC"))
         return dt_utc.strftime(self.DATE_FORMAT)
 
-    @tenacity.retry(
-        retry=lambda retry_state: (
-            isinstance(retry_state.outcome.exception(), requests.exceptions.HTTPError)
-            and retry_state.outcome.exception().response.status_code == 429
-        ),
-        stop=tenacity.stop_after_attempt(8),
-        wait=tenacity.wait_exponential_jitter(initial=1, exp_base=2, jitter=30),
-        before_sleep=lambda retry_state: logger.warning(
-            f"Received 429, retrying in {retry_state.next_action.sleep} seconds..."
-        ),
-    )
     def _make_request(
         self,
         endpoint: str,
@@ -144,20 +133,26 @@ class JaoClient:
     ) -> requests.Response:
         """Make HTTP request to JAO API."""
         if not endpoint.startswith("system/"):
-            endpoint = f"{self.DATA_PATH}/{endpoint}"
+            endpoint = f"{self.DATA_PATH}/{endpoint.lstrip('/')}"
 
         url = f"{self.BASE_URL}/{endpoint.lstrip('/')}"
 
-        try:
-            self.log(logging.DEBUG, f"Making request to {url} with params {params}")
-            response = self.session.request(
-                method=method, url=url, params=params, **kwargs
-            )
-            response.raise_for_status()
-            return response
-        except requests.exceptions.RequestException as e:
-            self.log(logging.ERROR, f"Failed to make JAO API request: {e}")
-            raise
+        for attempt in tenacity.Retrying(
+            retry=_should_retry,
+            stop=tenacity.stop_after_attempt(8),
+            wait=tenacity.wait_exponential_jitter(initial=1, exp_base=2, jitter=30),
+            before_sleep=lambda retry_state: self.log(
+                logging.WARNING,
+                f"Received 429, retrying in {retry_state.next_action.sleep} seconds...",
+            ),
+        ):
+            with attempt:
+                self.log(logging.DEBUG, f"Making request to {url} with params {params}")
+                response = self.session.request(
+                    method=method, url=url, params=params, **kwargs
+                )
+                response.raise_for_status()
+                return response
 
     def get_data(
         self, data_type: DataType, from_date: date, to_date: date, **kwargs
@@ -297,3 +292,14 @@ class JaoFileClient(JaoClient):
             Path to the saved response file
         """
         return self._make_request(self.MONITORING_PATH, folder_path=folder_path)
+
+
+def _should_retry(retry_state) -> bool:
+    """Determine if request should be retried based on response.
+
+    Retries only on HTTP 429 (Too Many Requests) errors.
+    """
+    return (
+        isinstance(retry_state.outcome.exception(), requests.exceptions.HTTPError)
+        and retry_state.outcome.exception().response.status_code == 429
+    )
