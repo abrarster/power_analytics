@@ -8,7 +8,7 @@ from eupower_core.dagster_resources import (
 )
 from . import jobs
 from . import assets
-from .resources import RateLimiter, postgres_io_manager
+from .resources import RateLimiter, postgres_io_manager, dlt_resource
 
 DBT_PROJECT_DIR = "/Users/abrar/Python/power_analytics/dbt_pipelines"
 DBT_PROFILES_DIR = "/Users/abrar/Python/power_analytics/dbt_pipelines/config"
@@ -26,6 +26,7 @@ resources = {
     "postgres_io": postgres_io_manager.configured(
         {"connection_url": "postgresql://..."}
     ),
+    "dlt_resource": dlt_resource,
 }
 
 all_assets = dagster.load_assets_from_package_module(assets)

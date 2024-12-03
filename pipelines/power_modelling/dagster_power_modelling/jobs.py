@@ -77,5 +77,5 @@ process_elia = dagster.define_asset_job(
 )
 jao_history = dagster.define_asset_job(
     "scrape_jao",
-    selection=dagster.AssetSelection.groups(assets.asset_groups.JAO),
+    selection=dagster.AssetSelection.groups(assets.asset_groups.JAO)
 )

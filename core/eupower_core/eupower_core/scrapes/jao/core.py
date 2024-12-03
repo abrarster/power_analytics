@@ -2,6 +2,10 @@ import requests
 import logging
 import tenacity
 import json
+import ijson
+import pandas as pd
+from itertools import islice
+from decimal import Decimal
 from typing import Optional, Dict, Any, Union
 from datetime import datetime, date, time
 from enum import Enum
@@ -303,3 +307,66 @@ def _should_retry(retry_state) -> bool:
         isinstance(retry_state.outcome.exception(), requests.exceptions.HTTPError)
         and retry_state.outcome.exception().response.status_code == 429
     )
+
+
+# Functions to process raw json files
+
+
+def stream_jao(file_path, chunk_size=100):
+    with open(file_path, "rb") as file:
+        objects = ijson.items(file, "data.item")
+        while True:
+            chunk = list(islice(objects, chunk_size))
+            if not chunk:
+                break
+            yield chunk
+
+
+class DecimalEncoder(json.JSONEncoder):
+    """Custom JSON encoder to handle Decimal types"""
+
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            return float(obj)
+        return super(DecimalEncoder, self).default(obj)
+
+
+def process_value(value):
+    """Process individual values to handle special types"""
+    if isinstance(value, Decimal):
+        return float(value)
+    elif isinstance(value, (dict, list)):
+        # Convert to JSON string while handling Decimal types
+        return json.dumps(value, cls=DecimalEncoder)
+    return value
+
+
+def create_dataframe(chunk):
+    """Convert chunk to DataFrame while preserving complex types for JSONB"""
+    # Process each item in the chunk
+    processed_chunk = []
+    for item in chunk:
+        processed_item = {k: process_value(v) for k, v in item.items()}
+        processed_chunk.append(processed_item)
+
+    # Create DataFrame
+    df = pd.DataFrame(processed_chunk)
+
+    # Convert datetime columns (detect based on string pattern)
+    datetime_cols = df.select_dtypes(include=["object"]).columns[
+        df.select_dtypes(include=["object"]).apply(
+            lambda x: x.str.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}").any()
+        )
+    ]
+
+    for col in datetime_cols:
+        df[col] = pd.to_datetime(df[col])
+
+    return df
+
+
+def process_chunks(file_path, chunk_size=100):
+    """Generator that yields DataFrame chunks"""
+    for chunk in stream_jao(file_path, chunk_size):
+        yield create_dataframe(chunk)
+

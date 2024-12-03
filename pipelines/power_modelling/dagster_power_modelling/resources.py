@@ -1,6 +1,7 @@
-from datetime import datetime
 import time
 import threading
+import pandas as pd
+from datetime import datetime
 from dagster import (
     ConfigurableResource,
     InitResourceContext,
@@ -10,9 +11,9 @@ from dagster import (
     OutputContext,
     ConfigurableIOManager,
 )
+from dagster_embedded_elt.dlt import DagsterDltResource
 from typing import Optional, Any
 from pydantic import Field
-import pandas as pd
 from eupower_core.utils.databases import PostgresDb
 
 
@@ -104,3 +105,5 @@ def postgres_io_manager(init_context):
     return PostgresIOManager(
         connection_url=init_context.resource_config["connection_url"],
     )
+
+dlt_resource = DagsterDltResource()
