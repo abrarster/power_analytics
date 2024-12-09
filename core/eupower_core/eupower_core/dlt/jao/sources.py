@@ -76,7 +76,9 @@ def save_json_to_filesystem(
     return str(output_path)
 
 
-def create_jao_pipeline(resource_name: str, endpoint_path: str, additional_params: Optional[dict] = None):
+def create_jao_pipeline(
+    resource_name: str, endpoint_path: str, additional_params: Optional[dict] = None
+):
     """Factory function to create a source with a single resource.
 
     Args:
@@ -105,7 +107,7 @@ def create_jao_pipeline(resource_name: str, endpoint_path: str, additional_param
         else:
             instance_logger = resource_logger
         instance_logger.debug(f"Fetching {resource_name} data for {as_of_date}")
-        for attempt in tenacity.Retrying(   
+        for attempt in tenacity.Retrying(
             retry=_should_retry,
             stop=tenacity.stop_after_attempt(8),
             wait=tenacity.wait_exponential_jitter(initial=1, exp_base=2, jitter=30),
@@ -152,25 +154,51 @@ def _should_retry(retry_state) -> bool:
 # Create individual pipelines for each resource
 max_net_position_source = create_jao_pipeline("max_net_position", "data/maxNetPos")
 max_bex_source = create_jao_pipeline("max_bex", "data/maxExchanges")
-initial_computation_source = create_jao_pipeline("initial_computation", "data/initialComputation", {'presolved': 'true'})
-remedial_action_preventive_source = create_jao_pipeline("remedial_action_preventive", "data/pra")
-remedial_action_curative_source = create_jao_pipeline("remedial_action_curative", "data/cra")
-validation_reductions_source = create_jao_pipeline("validation_reductions", "data/validationReductions")
-pre_final_computation_source = create_jao_pipeline("pre_final_computation", "data/preFinalComputation", {'presolved': 'true'})
+initial_computation_source = create_jao_pipeline(
+    "initial_computation", "data/initialComputation", {"presolved": "true"}
+)
+remedial_action_preventive_source = create_jao_pipeline(
+    "remedial_action_preventive", "data/pra"
+)
+remedial_action_curative_source = create_jao_pipeline(
+    "remedial_action_curative", "data/cra"
+)
+validation_reductions_source = create_jao_pipeline(
+    "validation_reductions", "data/validationReductions"
+)
+pre_final_computation_source = create_jao_pipeline(
+    "pre_final_computation", "data/preFinalComputation", {"presolved": "true"}
+)
 long_term_nomination_source = create_jao_pipeline("long_term_nomination", "data/ltn")
-final_computation_source = create_jao_pipeline("final_computation", "data/finalComputation", {'presolved': 'true'})
+final_computation_source = create_jao_pipeline(
+    "final_computation", "data/finalComputation", {"presolved": "true"}
+)
 lta_source = create_jao_pipeline("lta", "data/lta")
 final_bex_source = create_jao_pipeline("final_bex_restrictions", "data/bexRestrictions")
-allocation_constraints_source = create_jao_pipeline("allocation_constraints", "data/allocationConstraint")
+allocation_constraints_source = create_jao_pipeline(
+    "allocation_constraints", "data/allocationConstraint"
+)
 d2cf_source = create_jao_pipeline("d2cf", "data/d2CF")
 refprog_source = create_jao_pipeline("refprog", "data/refprog")
-reference_net_position_source = create_jao_pipeline("reference_net_position", "data/referenceNetPosition")
+reference_net_position_source = create_jao_pipeline(
+    "reference_net_position", "data/referenceNetPosition"
+)
 atc_core_external_source = create_jao_pipeline("atc_core_external", "data/atc")
-shadow_auction_atc_source = create_jao_pipeline("shadow_auction_atc", "data/shadowAuctionAtc")
-active_fb_constraints_source = create_jao_pipeline("active_fb_constraints", "data/shadowPrices")
-active_lta_constraints_source = create_jao_pipeline("active_lta_constraints", "data/activeLtaConstraint")
-congestion_income_source = create_jao_pipeline("congestion_income", "data/congestionIncome")
-scheduled_exchanges_source = create_jao_pipeline("scheduled_exchanges", "data/scheduledExchanges")
+shadow_auction_atc_source = create_jao_pipeline(
+    "shadow_auction_atc", "data/shadowAuctionAtc"
+)
+active_fb_constraints_source = create_jao_pipeline(
+    "active_fb_constraints", "data/shadowPrices"
+)
+active_lta_constraints_source = create_jao_pipeline(
+    "active_lta_constraints", "data/activeLtaConstraint"
+)
+congestion_income_source = create_jao_pipeline(
+    "congestion_income", "data/congestionIncome"
+)
+scheduled_exchanges_source = create_jao_pipeline(
+    "scheduled_exchanges", "data/scheduledExchanges"
+)
 net_position_source = create_jao_pipeline("net_position", "data/netPos")
 intraday_atc_source = create_jao_pipeline("intraday_atc", "data/intradayAtc")
 intraday_ntc_source = create_jao_pipeline("intraday_ntc", "data/intradayNtc")
