@@ -1,0 +1,5 @@
+version: 1
+
+models:
+  - name: be_generation_by_fuel_multisource
+  - name: be_demand_multisource

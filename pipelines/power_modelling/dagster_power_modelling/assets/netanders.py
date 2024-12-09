@@ -2,6 +2,7 @@ import dagster
 import requests
 import os
 import json
+import warnings
 from datetime import datetime, date, timedelta
 from eupower_core.scrapes.netanders import parameters as params
 from eupower_core.scrapes.netanders.core import download_from_ned, parse_ned_response
@@ -9,6 +10,7 @@ from eupower_core.dagster_resources import FilesystemResource, PostgresResource
 from .asset_groups import NETANDERS
 from ..resources import RateLimiter
 
+warnings.filterwarnings("ignore", category=dagster.ExperimentalWarning)
 _generation_exclusions = [
     "NATURAL_GAS",
     "INDUSTRIAL_CONSUMERS_GAS_COMBINATION",

@@ -85,6 +85,14 @@ country_codes = {
         "PL",
         "RO",
         "CZ",
+        "IT",
+        "IT_CALA",
+        "IT_SICI",
+        "IT_CNOR",
+        "IT_CSUD",
+        "IT_NORD",
+        "IT_SUD",
+        "IT_SARD",
     ),
     "crossborder_flows": (
         "FR",
@@ -110,13 +118,29 @@ country_codes = {
         "RO",
         "CZ",
     ),
+    "da_prices": (
+        "IT_CALA",
+        "IT_SICI",
+        "IT_CNOR",
+        "IT_CSUD",
+        "IT_NORD",
+        "IT_SUD",
+        "IT_SARD",
+        "FR",
+        "DE_LU",
+        "CH",
+        "AT",
+        "SI",
+        "GR",
+        "ME",
+    ),
 }
 
 
 @dagster.asset(
     partitions_def=dagster.MultiPartitionsDefinition(
         {
-            "date": dagster.DailyPartitionsDefinition(start_date="2024-01-01"),
+            "date": dagster.DailyPartitionsDefinition(start_date="2023-01-01"),
             "region": dagster.StaticPartitionsDefinition(
                 country_codes["generation_by_fuel"]
             ),
@@ -124,7 +148,7 @@ country_codes = {
     ),
     group_name=ASSET_GROUP,
     tags={"storage": "filesystem", "scrape_source": "entsoe"},
-    kinds={'python', 'file'}
+    kinds={"python", "file"},
 )
 def entsoe_generation_by_fuel_raw(
     context: dagster.AssetExecutionContext, fs: FilesystemResource
@@ -164,7 +188,7 @@ def entsoe_generation_by_fuel_raw(
     deps=[entsoe_generation_by_fuel_raw],
     partitions_def=dagster.MultiPartitionsDefinition(
         {
-            "date": dagster.DailyPartitionsDefinition(start_date="2024-01-01"),
+            "date": dagster.DailyPartitionsDefinition(start_date="2023-01-01"),
             "region": dagster.StaticPartitionsDefinition(
                 country_codes["generation_by_fuel"]
             ),
@@ -172,7 +196,7 @@ def entsoe_generation_by_fuel_raw(
     ),
     group_name=ASSET_GROUP,
     tags={"storage": "postgres"},
-    kinds={'python', 'postgres'}
+    kinds={"python", "postgres"},
 )
 def entsoe_generation_by_fuel(
     context: dagster.AssetExecutionContext,
@@ -212,7 +236,7 @@ def entsoe_generation_by_fuel(
     deps=[entsoe_generation_by_fuel, entsoe_areas, entsoe_psr_types],
     group_name=ASSET_GROUP,
     tags={"storage": "postgres"},
-    kinds={'python', 'postgres'}
+    kinds={"python", "postgres"},
 )
 def fct_entsoe_generation_by_fuel(
     context: dagster.AssetExecutionContext, postgres: PostgresResource
@@ -256,13 +280,13 @@ def fct_entsoe_generation_by_fuel(
 @dagster.asset(
     partitions_def=dagster.MultiPartitionsDefinition(
         {
-            "date": dagster.DailyPartitionsDefinition(start_date="2024-01-01"),
+            "date": dagster.DailyPartitionsDefinition(start_date="2023-01-01"),
             "region": dagster.StaticPartitionsDefinition(country_codes["demand"]),
         }
     ),
     group_name=ASSET_GROUP,
     tags={"storage": "filesystem", "scrape_source": "entsoe"},
-    kinds={'python', 'file'}
+    kinds={"python", "file"},
 )
 def entsoe_demand_raw(context: dagster.AssetExecutionContext, fs: FilesystemResource):
     api_key = dagster.EnvVar("ENTSOE_API_KEY").get_value()
@@ -288,13 +312,13 @@ def entsoe_demand_raw(context: dagster.AssetExecutionContext, fs: FilesystemReso
     deps=["entsoe_demand_raw"],
     partitions_def=dagster.MultiPartitionsDefinition(
         {
-            "date": dagster.DailyPartitionsDefinition(start_date="2024-01-01"),
+            "date": dagster.DailyPartitionsDefinition(start_date="2023-01-01"),
             "region": dagster.StaticPartitionsDefinition(country_codes["demand"]),
         }
     ),
     group_name=ASSET_GROUP,
     tags={"storage": "postgres"},
-    kinds={'python', 'postgres'}
+    kinds={"python", "postgres"},
 )
 def entsoe_demand(
     context: dagster.AssetExecutionContext,
@@ -332,10 +356,88 @@ def entsoe_demand(
 
 
 @dagster.asset(
+    partitions_def=dagster.MultiPartitionsDefinition(
+        {
+            "date": dagster.DailyPartitionsDefinition(start_date="2022-01-01"),
+            "region": dagster.StaticPartitionsDefinition(country_codes["da_prices"]),
+        }
+    ),
+    group_name=ASSET_GROUP,
+    tags={"storage": "filesystem", "scrape_source": "entsoe"},
+    kinds={"python", "file"},
+)
+def entsoe_da_prices_raw(
+    context: dagster.AssetExecutionContext, fs: FilesystemResource
+):
+    api_key = dagster.EnvVar("ENTSOE_API_KEY").get_value()
+    for_date = context.partition_key.keys_by_dimension["date"]
+    region = context.partition_key.keys_by_dimension["region"]
+
+    start_date, end_date = _get_date_window(for_date)
+    writer = fs.get_writer(f"entsoe/da_prices/{start_date.strftime('%Y%m%d')}/{region}")
+    writer.delete_data()
+    output_path = writer.base_path
+    scraper = entsoe.FileWritingEntsoeScraper(
+        api_key=api_key, output_dir=output_path
+    ).set_dates(start_date, start_date)
+    try:
+        scraper.get_da_prices(region)
+    except requests.exceptions.HTTPError:
+        context.log.warning(f"HTTP error for {region} on {start_date}")
+    except NoMatchingDataError:
+        context.log.warning(f"No data for {region} on {start_date}")
+
+
+@dagster.asset(
+    deps=["entsoe_da_prices_raw"],
+    partitions_def=dagster.MultiPartitionsDefinition(
+        {
+            "date": dagster.DailyPartitionsDefinition(start_date="2022-01-01"),
+            "region": dagster.StaticPartitionsDefinition(country_codes["da_prices"]),
+        }
+    ),
+    group_name=ASSET_GROUP,
+    tags={"storage": "postgres"},
+    kinds={"python", "postgres"},
+)
+def entsoe_da_prices(
+    context: dagster.AssetExecutionContext,
+    fs: FilesystemResource,
+    postgres: PostgresResource,
+):
+    for_date = context.partition_key.keys_by_dimension["date"]
+    region = context.partition_key.keys_by_dimension["region"]
+    folder_path = fs.get_writer(
+        f"entsoe/da_prices/{pd.to_datetime(for_date).strftime('%Y%m%d')}/{region}"
+    ).base_path
+    parser = entsoe.EntsoeFileParser(folder_path)
+    df = parser.parse_files()
+    postgres_db = postgres.get_db_connection()
+    stmt_create_table = """
+        CREATE SCHEMA IF NOT EXISTS entsoe
+        --END STATEMENT--
+
+        CREATE TABLE IF NOT EXISTS entsoe.entsoe_da_prices (
+            for_date VARCHAR,
+            price FLOAT,
+            currency VARCHAR,
+            unit VARCHAR,
+            bidding_zone VARCHAR,
+            resolution VARCHAR,
+            PRIMARY KEY (for_date, bidding_zone, resolution)
+        )
+        --END STATEMENT--
+    """
+    with postgres_db as db:
+        db.execute_statements(stmt_create_table)
+        db.write_dataframe(df, "entsoe", "entsoe_da_prices")
+
+
+@dagster.asset(
     partitions_def=dagster.DailyPartitionsDefinition(start_date="2022-01-01"),
     group_name=ASSET_GROUP,
     tags={"storage": "filesystem", "scrape_source": "entsoe"},
-    kinds={'python', 'file'}
+    kinds={"python", "file"},
 )
 def entsoe_production_units_raw(
     context: dagster.AssetExecutionContext, fs: FilesystemResource
@@ -364,7 +466,7 @@ def entsoe_production_units_raw(
     partitions_def=dagster.DailyPartitionsDefinition(start_date="2022-01-01"),
     group_name=ASSET_GROUP,
     tags={"storage": "postgres"},
-    kinds={'python', 'postgres'}
+    kinds={"python", "postgres"},
 )
 def entsoe_production_units(
     context: dagster.AssetExecutionContext,
@@ -422,7 +524,7 @@ def entsoe_production_units(
     ),
     group_name=ASSET_GROUP,
     tags={"storage": "filesystem", "scrape_source": "entsoe"},
-    kinds={'python', 'file'}
+    kinds={"python", "file"},
 )
 def entsoe_generation_by_unit_raw(
     context: dagster.AssetExecutionContext, fs: FilesystemResource
@@ -480,7 +582,7 @@ def entsoe_generation_by_unit_raw(
     ),
     group_name=ASSET_GROUP,
     tags={"storage": "postgres"},
-    kinds={'python', 'postgres'}
+    kinds={"python", "postgres"},
 )
 def entsoe_generation_by_unit(
     context: dagster.AssetExecutionContext,
@@ -518,88 +620,138 @@ def entsoe_generation_by_unit(
         db.write_dataframe(df, "entsoe", "entsoe_generation_by_unit")
 
 
-@dagster.asset(
-    partitions_def=dagster.MultiPartitionsDefinition(
-        {
-            "date": dagster.DailyPartitionsDefinition(start_date="2024-01-01"),
-            "region": dagster.StaticPartitionsDefinition(
-                country_codes["crossborder_flows"]
-            ),
-        }
-    ),
-    group_name=ASSET_GROUP,
-    tags={"storage": "filesystem", "scrape_source": "entsoe"},
-    kinds={'python', 'file'}
-)
-def entsoe_crossborder_flows_raw(
-    context: dagster.AssetExecutionContext, fs: FilesystemResource
+def create_entsoe_exchange_assets(
+    exchange_type: str, partitions_def: dagster.MultiPartitionsDefinition
 ):
-    api_key = dagster.EnvVar("ENTSOE_API_KEY").get_value()
-    for_date = context.partition_key.keys_by_dimension["date"]
-    region = context.partition_key.keys_by_dimension["region"]
-
-    start_date, end_date = _get_date_window(for_date)
-    writer = fs.get_writer(
-        f"entsoe/cross_border_flows/{start_date.strftime('%Y%m%d')}/{region}"
-    )
-    writer.delete_data()
-    output_path = writer.base_path
-    scraper = entsoe.FileWritingEntsoeScraper(
-        api_key=api_key, output_dir=output_path
-    ).set_dates(start_date, end_date)
-    try:
-        scraper.query_crossborder_flows(region, context.log)
-    except requests.exceptions.HTTPError:
-        context.log.warning(f"HTTP error for {region} on {start_date}")
-    except NoMatchingDataError:
-        context.log.warning(f"No data for {region} on {start_date}")
-
-
-@dagster.asset(
-    deps=["entsoe_crossborder_flows_raw"],
-    partitions_def=dagster.MultiPartitionsDefinition(
-        {
-            "date": dagster.DailyPartitionsDefinition(start_date="2024-01-01"),
-            "region": dagster.StaticPartitionsDefinition(
-                country_codes["crossborder_flows"]
-            ),
-        }
-    ),
-    group_name=ASSET_GROUP,
-    tags={"storage": "postgres"},
-    kinds={'python', 'postgres'}
-)
-def entsoe_crossborder_flows(
-    context: dagster.AssetExecutionContext,
-    fs: FilesystemResource,
-    postgres: PostgresResource,
-):
-    for_date = context.partition_key.keys_by_dimension["date"]
-    region = context.partition_key.keys_by_dimension["region"]
-    folder_path = fs.get_writer(
-        f"entsoe/cross_border_flows/{pd.to_datetime(for_date).strftime('%Y%m%d')}/{region}"
-    ).base_path
-    parser = entsoe.EntsoeFileParser(folder_path)
-    df = parser.parse_files()
-    postgres_db = postgres.get_db_connection()
-    stmt_create_table = """
-        CREATE SCHEMA IF NOT EXISTS entsoe
-        --END STATEMENT--
-
-        CREATE TABLE IF NOT EXISTS entsoe.entsoe_crossborder_flows (
-            for_date VARCHAR(255),
-            value FLOAT,
-            unit VARCHAR(255),
-            in_domain VARCHAR(255),
-            out_domain VARCHAR(255),
-            doc_type VARCHAR(255),
-            PRIMARY KEY (for_date, in_domain, out_domain)
-        )
-        --END STATEMENT--
     """
-    with postgres_db as db:
-        db.execute_statements(stmt_create_table)
-        db.write_dataframe(df, "entsoe", "entsoe_crossborder_flows")
+    Factory function to create pairs of raw and processed exchange assets.
+
+    Args:
+        exchange_type: One of 'crossborder_flows', 'da_scheduled_exchange',
+                      or 'da_total_scheduled_exchange'
+        partitions_def: MultiPartitionsDefinition for date and region partitioning
+    """
+    path_mapping = {
+        "crossborder_flows": "cross_border_flows",
+        "da_scheduled_exchange": "da_scheduled_exchange",
+        "da_total_scheduled_exchange": "da_total_scheduled_exchange",
+        "dayahead_ntc": "dayahead_ntc",
+    }
+
+    scraper_method_mapping = {
+        "crossborder_flows": "query_crossborder_flows",
+        "da_scheduled_exchange": "query_da_scheduled_exchange",
+        "da_total_scheduled_exchange": "query_da_total_scheduled_exchange",
+        "dayahead_ntc": "query_dayahead_ntc",
+    }
+
+    raw_asset_name = f"entsoe_{exchange_type}_raw"
+    processed_asset_name = f"entsoe_{exchange_type}"
+
+    @dagster.asset(
+        name=raw_asset_name,
+        partitions_def=partitions_def,
+        group_name=ASSET_GROUP,
+        tags={"storage": "filesystem", "scrape_source": "entsoe"},
+        kinds={"python", "file"},
+    )
+    def raw_asset(context: dagster.AssetExecutionContext, fs: FilesystemResource):
+        api_key = dagster.EnvVar("ENTSOE_API_KEY").get_value()
+        for_date = context.partition_key.keys_by_dimension["date"]
+        region = context.partition_key.keys_by_dimension["region"]
+
+        start_date, end_date = _get_date_window(for_date)
+        writer = fs.get_writer(
+            f"entsoe/{path_mapping[exchange_type]}/{start_date.strftime('%Y%m%d')}/{region}"
+        )
+        writer.delete_data()
+        output_path = writer.base_path
+        scraper = entsoe.FileWritingEntsoeScraper(
+            api_key=api_key, output_dir=output_path
+        ).set_dates(start_date, end_date)
+        try:
+            getattr(scraper, scraper_method_mapping[exchange_type])(region, context.log)
+        except requests.exceptions.HTTPError:
+            context.log.warning(f"HTTP error for {region} on {start_date}")
+        except NoMatchingDataError:
+            context.log.warning(f"No data for {region} on {start_date}")
+
+    @dagster.asset(
+        name=processed_asset_name,
+        deps=[raw_asset_name],
+        partitions_def=partitions_def,
+        group_name=ASSET_GROUP,
+        tags={"storage": "postgres"},
+        kinds={"python", "postgres"},
+    )
+    def processed_asset(
+        context: dagster.AssetExecutionContext,
+        fs: FilesystemResource,
+        postgres: PostgresResource,
+    ):
+        for_date = context.partition_key.keys_by_dimension["date"]
+        region = context.partition_key.keys_by_dimension["region"]
+        folder_path = fs.get_writer(
+            f"entsoe/{path_mapping[exchange_type]}/{pd.to_datetime(for_date).strftime('%Y%m%d')}/{region}"
+        ).base_path
+        parser = entsoe.EntsoeFileParser(folder_path)
+        df = parser.parse_files()
+        postgres_db = postgres.get_db_connection()
+        stmt_create_table = f"""
+            CREATE SCHEMA IF NOT EXISTS entsoe
+            --END STATEMENT--
+
+            CREATE TABLE IF NOT EXISTS entsoe.entsoe_{exchange_type} (
+                for_date VARCHAR(255),
+                value FLOAT,
+                unit VARCHAR(255),
+                in_domain VARCHAR(255),
+                out_domain VARCHAR(255),
+                doc_type VARCHAR(255),
+                PRIMARY KEY (for_date, in_domain, out_domain)
+            )
+            --END STATEMENT--
+        """
+        with postgres_db as db:
+            db.execute_statements(stmt_create_table)
+            db.write_dataframe(df, "entsoe", f"entsoe_{exchange_type}")
+
+    return raw_asset, processed_asset
+
+
+# Define the partitions once
+exchange_partitions = dagster.MultiPartitionsDefinition(
+    {
+        "date": dagster.DailyPartitionsDefinition(start_date="2023-01-01"),
+        "region": dagster.StaticPartitionsDefinition(
+            country_codes["crossborder_flows"]
+        ),
+    }
+)
+
+# Create crossborder flows assets
+entsoe_crossborder_flows_raw, entsoe_crossborder_flows = create_entsoe_exchange_assets(
+    exchange_type="crossborder_flows", partitions_def=exchange_partitions
+)
+
+# Create day-ahead scheduled exchange assets
+entsoe_da_scheduled_exchange_raw, entsoe_da_scheduled_exchange = (
+    create_entsoe_exchange_assets(
+        exchange_type="da_scheduled_exchange", partitions_def=exchange_partitions
+    )
+)
+
+# Create day-ahead total scheduled exchange assets
+entsoe_da_total_scheduled_exchange_raw, entsoe_da_total_scheduled_exchange = (
+    create_entsoe_exchange_assets(
+        exchange_type="da_total_scheduled_exchange", partitions_def=exchange_partitions
+    )
+)
+
+# Create day-ahead NTC assets
+entsoe_dayahead_ntc_raw, entsoe_dayahead_ntc = create_entsoe_exchange_assets(
+    exchange_type="dayahead_ntc", partitions_def=exchange_partitions
+)
 
 
 def _get_date_window(
@@ -614,7 +766,7 @@ def _get_date_window(
 
 @dbt_assets(
     manifest="/Users/abrar/Python/power_analytics/dbt_pipelines/target/manifest.json",
-    select="source:entsoe+"  # This selects all models that depend on entsoe sources
+    select="scrapes.entsoe",  # This selects all models that depend on entsoe sources
 )
 def entsoe_dbt_assets(context: dagster.AssetExecutionContext, dbt: DbtCliResource):
-    dbt.cli(["build"], context=context).wait()
+    yield from dbt.cli(["build"], context=context).stream()

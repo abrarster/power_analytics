@@ -1,15 +1,24 @@
 import dagster
-import dagster_dbt
 from dagster_dbt import DbtCliResource, dbt_assets
 
-from . import elia  # Import the elia assets module
 
-@dbt_assets(
-    manifest="/Users/abrar/Python/power_analytics/dbt_pipelines/target/manifest.json",
-    select="source:elia+"  # This selects all models that depend on elia sources
+def create_dbt_asset(name: str, select_key: str):
+    """Factory function to create dbt assets with consistent configuration."""
+
+    @dbt_assets(
+        manifest="/Users/abrar/Python/power_analytics/dbt_pipelines/target/manifest.json",
+        select=select_key,
+        name=name,  # This is sufficient for Dagster's asset identification
+    )
+    def dbt_asset(context: dagster.AssetExecutionContext, dbt: DbtCliResource):
+        yield from dbt.cli(["build"], context=context).stream()
+
+    return dbt_asset
+
+
+# Create assets using the factory
+elia_dbt_assets = create_dbt_asset("elia_dbt_assets", "scrapes.elia")
+historic_balances_dbt_assets = create_dbt_asset(
+    "historic_balances_dbt_assets", "historic_balances"
 )
-def elia_dbt_assets(context: dagster.AssetExecutionContext, dbt: DbtCliResource):
-    yield from dbt.cli(["build"], context=context)
-
-# Add this to __all__ in the assets/__init__.py
-__all__ = ["elia_dbt_assets"]
+transmission_assets = create_dbt_asset("transmission_assets", "transmission")

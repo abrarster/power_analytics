@@ -33,6 +33,22 @@ sources:
           dagster:
             asset_key: ['fct_entsoe_generation_by_fuel']
       - name: entsoe_production_units
+      - name: entsoe_crossborder_flows
+        meta:
+          dagster:
+            asset_key: ['entsoe_crossborder_flows']
+      - name: entsoe_da_scheduled_exchange
+        meta:
+          dagster:
+            asset_key: ['entsoe_da_scheduled_exchange']
+      - name: entsoe_da_total_scheduled_exchange
+        meta:
+          dagster:
+            asset_key: ['entsoe_da_total_scheduled_exchange']
+      - name: entsoe_da_prices
+        meta:
+          dagster:
+            asset_key: ['entsoe_da_prices']
   - name: mapping_tables
     schema: mapping_tables
     database: postgres
@@ -55,8 +71,17 @@ sources:
           dagster:
             asset_key: ['elia_grid_load']
       - name: itc_da_comex
+        meta:
+          dagster:
+            asset_key: ['elia_itc_da_comex']
       - name: itc_phys_flow
+        meta:
+          dagster:
+            asset_key: ['elia_itc_phys_flow']
       - name: itc_total_comex
+        meta:
+          dagster:
+            asset_key: ['elia_itc_total_comex']
       - name: rt_gen_byfuel
         meta:
           dagster:

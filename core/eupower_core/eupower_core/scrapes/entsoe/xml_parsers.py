@@ -407,8 +407,16 @@ def parse_power_plants(xml_string):
                         units.append(
                             {
                                 "name": unit.find(f"{ns_path}name", ns).text,
-                                "mRID": unit_mrid_elem.text if unit_mrid_elem is not None else None,
-                                "mRID_coding_scheme": unit_mrid_elem.get("codingScheme") if unit_mrid_elem is not None else None,
+                                "mRID": (
+                                    unit_mrid_elem.text
+                                    if unit_mrid_elem is not None
+                                    else None
+                                ),
+                                "mRID_coding_scheme": (
+                                    unit_mrid_elem.get("codingScheme")
+                                    if unit_mrid_elem is not None
+                                    else None
+                                ),
                                 "nominal_power": float(
                                     unit.find(f"{ns_path}nominalP", ns).text
                                 ),
@@ -438,5 +446,58 @@ def parse_power_plants(xml_string):
     # Convert date column
     if not df.empty and "implementation_date" in df.columns:
         df["implementation_date"] = pd.to_datetime(df["implementation_date"])
+
+    return df
+
+
+def parse_entsoe_day_ahead_prices(xml_string) -> pd.DataFrame:
+    # Define the namespace
+    ns = {"ns": "urn:iec62325.351:tc57wg16:451-3:publicationdocument:7:3"}
+
+    # Parse XML
+    root = ET.fromstring(xml_string)
+
+    # Create lists to store data
+    data = {
+        "for_date": [],
+        "price": [],
+        "currency": [],
+        "unit": [],
+        "bidding_zone": [],
+        "resolution": [],  # Added resolution column
+    }
+
+    # Extract time series data
+    for time_series in root.findall(".//ns:TimeSeries", ns):
+        # Get metadata
+        currency = time_series.find("ns:currency_Unit.name", ns).text
+        unit = time_series.find("ns:price_Measure_Unit.name", ns).text
+        bidding_zone = time_series.find("ns:in_Domain.mRID", ns).text
+
+        for period in time_series.findall(".//ns:Period", ns):
+            start_time = period.find("ns:timeInterval/ns:start", ns).text
+            resolution = period.find("ns:resolution", ns).text
+
+            # Clean up resolution format (e.g., PT15M -> 15min)
+            clean_resolution = resolution.replace("PT", "").replace("M", "min")
+
+            for point in period.findall(".//ns:Point", ns):
+                position = int(point.find("ns:position", ns).text)
+                price = float(point.find("ns:price.amount", ns).text)
+
+                timestamp = pd.Timestamp(start_time) + pd.Timedelta(clean_resolution) * (position - 1)
+
+                data["for_date"].append(timestamp)
+                data["price"].append(price)
+                data["currency"].append(currency)
+                data["unit"].append(unit)
+                data["bidding_zone"].append(bidding_zone)
+                data["resolution"].append(clean_resolution)  # Add resolution to each row
+
+    # Create DataFrame
+    df = pd.DataFrame(data)
+
+    # Sort by timestamp and convert to string format
+    df = df.sort_values("for_date").reset_index(drop=True).astype({"for_date": str})
 
     return df

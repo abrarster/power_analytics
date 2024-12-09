@@ -1,10 +1,11 @@
 import os
 import dagster
 import pandas as pd
+import json
 from datetime import date
 from typing import Optional
 from eupower_core.dagster_resources import FilesystemResource, PostgresResource
-from eupower_core.scrapes.elia import EliaTs
+from eupower_core.scrapes.elia import EliaTs, EliaRemits
 from .asset_groups import ELIA
 
 
@@ -147,6 +148,58 @@ table_metadata = {
         },
         "primary_key": ["datetime", "country"],
     },
+    "forced_outages": {
+        "schema": "elia",
+        "tablename": "forced_outages",
+        "table_schema": {
+            "startdatetime": "VARCHAR",
+            "enddatetime": "VARCHAR",
+            "startoutagetstime": "VARCHAR",
+            "endoutagetstime": "VARCHAR",
+            "productionunitname": "VARCHAR",
+            "uniteic": "VARCHAR",
+            "technicalpmax": "FLOAT",
+            "availablepowerduringoutage": "FLOAT",
+            "outagereason": "VARCHAR",
+            "outagestatus": "VARCHAR",
+            "mrid": "VARCHAR",
+            "version": "bigint",
+            "lastupdated": "VARCHAR",
+        },
+        "primary_key": ["mrid", "version"],
+    },
+    "planned_outages": {
+        "schema": "elia",
+        "tablename": "planned_outages",
+        "table_schema": {
+            "startdatetime": "VARCHAR",
+            "enddatetime": "VARCHAR",
+            "startoutagetstime": "VARCHAR",
+            "endoutagetstime": "VARCHAR",
+            "productionunitname": "VARCHAR",
+            "uniteic": "VARCHAR",
+            "technicalpmax": "FLOAT",
+            "availablepowerduringoutage": "FLOAT",
+            "outagereason": "VARCHAR",
+            "outagestatus": "VARCHAR",
+            "mrid": "VARCHAR",
+            "version": "bigint",
+            "lastupdated": "VARCHAR",
+        },
+        "primary_key": ["mrid", "version"],
+    },
+    "generation_units": {
+        "schema": "elia",
+        "tablename": "generation_units",
+        "table_schema": {
+            "date": "VARCHAR",
+            "technicalunitname": "VARCHAR",
+            "unittype": "VARCHAR",
+            "technicalpmax": "FLOAT",
+            "fueltypepublication": "VARCHAR",
+        },
+        "primary_key": ["date", "technicalunitname"],
+    },
 }
 
 
@@ -179,7 +232,10 @@ def create_table_statement(
 
 
 def create_elia_raw_asset(
-    data_type: EliaTs, path_prefix: str, old_data_type: Optional[EliaTs] = None
+    data_type: EliaTs,
+    path_prefix: str,
+    old_data_type: Optional[EliaTs] = None,
+    is_remits: bool = False,
 ):
     """Factory function to create Elia data assets with common configuration."""
 
@@ -188,7 +244,7 @@ def create_elia_raw_asset(
         name=f"elia_{path_prefix}_raw",  # Add unique name based on path_prefix
         tags={"storage": "filesystem"},
         partitions_def=dagster.DailyPartitionsDefinition(start_date="2022-01-01"),
-        kinds={'python', 'file'}
+        kinds={"python", "file"},
     )
     def _elia_asset_raw(
         context: dagster.AssetExecutionContext,
@@ -213,7 +269,7 @@ def create_elia_raw_asset(
         name=f"elia_{path_prefix}",
         tags={"storage": "postgres"},
         partitions_def=dagster.DailyPartitionsDefinition(start_date="2022-01-01"),
-        kinds={'python', 'postgres'}
+        kinds={"python", "postgres"},
     )
     def _elia_asset_db(
         context: dagster.AssetExecutionContext,
@@ -226,17 +282,28 @@ def create_elia_raw_asset(
         if len(file_names) == 0:
             raise dagster.SkipReason("No data found")
 
-        df = pd.read_json(
-            f"{reader.base_path}/{file_names[0]}", dtype={"datetime": str}
-        )
+        if not is_remits:
+            df = pd.read_json(
+                f"{reader.base_path}/{file_names[0]}", dtype={"datetime": str}
+            )
+        else:
+            with open(f"{reader.base_path}/{file_names[0]}", 'r') as f:
+                df = pd.DataFrame.from_records(json.load(f)["results"])
+
+        records_exist = True
         if len(df) == 0:
-            raise dagster.SkipReason("No records found")
-        table_params = table_metadata[path_prefix]
-        stmt_create_table = create_table_statement(**table_params)
-        postgres_db = postgres.get_db_connection()
-        with postgres_db as db:
-            db.execute_statements(stmt_create_table)
-            db.write_dataframe(df, table_params["schema"], table_params["tablename"])
+            if not is_remits:
+                raise dagster.SkipReason("No records found")
+            else:
+                context.log.info("No records found for remits")
+                records_exist = False
+        if records_exist:
+            table_params = table_metadata[path_prefix]
+            stmt_create_table = create_table_statement(**table_params)
+            postgres_db = postgres.get_db_connection()
+            with postgres_db as db:
+                db.execute_statements(stmt_create_table)
+                db.write_dataframe(df, table_params["schema"], table_params["tablename"])
 
     return _elia_asset_raw, _elia_asset_db
 
@@ -273,4 +340,13 @@ elia_itc_total_comex_raw, elia_itc_total_comex = create_elia_raw_asset(
 )
 elia_itc_phys_flow_raw, elia_itc_phys_flow = create_elia_raw_asset(
     EliaTs.ITC_PHYS_FLOW, "itc_phys_flow"
+)
+elia_planned_outages_raw, elia_planned_outages = create_elia_raw_asset(
+    EliaRemits.PLANNED_OUTAGES, "planned_outages", is_remits=True
+)
+elia_forced_outages_raw, elia_forced_outages = create_elia_raw_asset(
+    EliaRemits.FORCED_OUTAGES, "forced_outages", is_remits=True
+)
+elia_generation_units_raw, elia_generation_units = create_elia_raw_asset(
+    EliaTs.GENERATION_UNITS, "generation_units", is_remits=True
 )

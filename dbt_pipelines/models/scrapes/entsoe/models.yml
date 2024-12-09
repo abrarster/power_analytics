@@ -4,3 +4,10 @@ models:
   - name: entsoe_net_generation_by_fuel
     config:
       materialized: table
+  - name: entsoe_demand_clean
+  - name: entsoe_da_comex
+  - name: entsoe_da_total_comex
+  - name: entsoe_interchange_physical
+  - name: entsoe_historic_transmission
+  - name: entsoe_da_prices_clean
+  - name: entsoe_da_hourly_prices
